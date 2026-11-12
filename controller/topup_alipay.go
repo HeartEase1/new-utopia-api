@@ -36,7 +36,16 @@ func RequestAlipayF2F(c *gin.Context) {
 		return
 	}
 	id := c.GetInt("id")
-	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+	quotedQuota := decimal.NewFromInt(req.Amount)
+	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
+		quotedQuota = quotedQuota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	}
+	creditedQuota, err := validateCreditedQuota(quotedQuota)
+	if err == nil {
+		err = model.ValidateTopUpQuotaCapacity(id, creditedQuota)
+	}
+	if err != nil {
+		paymentError(c, err)
 		return
 	}
 	group, err := model.GetUserGroup(id, true)
@@ -60,7 +69,7 @@ func RequestAlipayF2F(c *gin.Context) {
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		amount = decimal.NewFromInt(amount).Div(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
 	}
-	order := model.TopUp{UserId: id, Amount: amount, Money: paidAmount.InexactFloat64(),
+	order := model.TopUp{UserId: id, Amount: amount, QuotaSnapshot: int64(creditedQuota), Money: paidAmount.InexactFloat64(),
 		TradeNo: "UT" + strings.ReplaceAll(uuid.NewString(), "-", ""), PaymentMethod: model.PaymentProviderAlipayF2F,
 		PaymentProvider: model.PaymentProviderAlipayF2F, Status: common.TopUpStatusPending, CreateTime: time.Now().Unix()}
 	if err := order.Insert(); err != nil {

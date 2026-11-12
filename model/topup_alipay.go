@@ -56,8 +56,9 @@ var ErrAlipayAmountMismatch = errors.New("Alipay amount mismatch")
 
 // RechargeAlipayF2F is shared by signed callbacks and authenticated queries.
 // Amount matching, pending -> success and wallet credit are one transaction.
-// Existing TopUp fields retain rc.49 semantics; no schema migration is needed.
+// New orders use their checkout quota snapshot; legacy orders retain rc.49 semantics.
 func RechargeAlipayF2F(tradeNo string, paidAmount decimal.Decimal, callerIP string) error {
+	var cacheCredit quotaCreditCache
 	if tradeNo == "" {
 		return ErrTopUpNotFound
 	}
@@ -79,7 +80,7 @@ func RechargeAlipayF2F(tradeNo string, paidAmount decimal.Decimal, callerIP stri
 		if topUp.Status != common.TopUpStatusPending {
 			return ErrTopUpStatusInvalid
 		}
-		credited, err := common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		credited, err := topUp.alipayF2FQuota()
 		if err != nil || credited <= 0 {
 			return ErrInvalidTopUpQuota
 		}
@@ -92,7 +93,7 @@ func RechargeAlipayF2F(tradeNo string, paidAmount decimal.Decimal, callerIP stri
 		if result.RowsAffected != 1 {
 			return ErrTopUpStatusInvalid
 		}
-		if err := creditTopUpQuota(tx, topUp.UserId, credited, nil); err != nil {
+		if err := creditTopUpQuota(tx, topUp.UserId, credited, nil, &cacheCredit); err != nil {
 			return err
 		}
 		quota = credited
@@ -102,10 +103,24 @@ func RechargeAlipayF2F(tradeNo string, paidAmount decimal.Decimal, callerIP stri
 		return err
 	}
 	if quota > 0 {
-		syncCreditUserQuotaCache(topUp.UserId, quota, "Alipay F2F top-up")
+		syncCreditUserQuotaCache(topUp.UserId, quota, "Alipay F2F top-up", cacheCredit)
 		RecordTopupLog(topUp.UserId, common.NewMessage("Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}", map[string]any{
 			"quota": logger.FormatQuota(quota), "amount": fmt.Sprintf("%.2f", topUp.Money),
 		}), callerIP, PaymentProviderAlipayF2F, PaymentProviderAlipayF2F)
 	}
 	return nil
+}
+
+// alipayF2FQuota is shared with administrator completion so an order cannot
+// receive a different credit by taking an alternative settlement path.
+func (topUp *TopUp) alipayF2FQuota() (int, error) {
+	quota := decimal.NewFromInt(topUp.QuotaSnapshot)
+	if topUp.QuotaSnapshot == 0 {
+		quota = decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	}
+	credited, err := common.WalletQuotaFromDecimalStrict(quota)
+	if err != nil || credited <= 0 {
+		return 0, ErrInvalidTopUpQuota
+	}
+	return credited, nil
 }

@@ -177,6 +177,12 @@ func (a *AlipayF2F) VerifyNotification(ctx context.Context, values url.Values) e
 			return errors.New("duplicate Alipay notification field")
 		}
 	}
+	// This integration only supports public-key mode. An untrusted certificate
+	// serial would make the SDK fetch a certificate while holding its client
+	// mutex, allowing unsigned callbacks to stall all payment requests.
+	if values.Get("alipay_cert_sn") != "" {
+		return errors.New("Alipay certificate mode is not supported")
+	}
 	if values.Get("sign_type") != "RSA2" || values.Get("app_id") != a.AppID || values.Get("seller_id") != a.SellerID || values.Get("trade_no") == "" || values.Get("out_trade_no") == "" {
 		return errors.New("Alipay notification identity mismatch")
 	}

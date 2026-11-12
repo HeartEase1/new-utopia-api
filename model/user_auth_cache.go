@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/google/uuid"
 
 	"gorm.io/gorm"
 )
@@ -87,6 +88,9 @@ redis.call('HSET', KEYS[1],
   'CacheExpiresAt', ARGV[13], 'CacheMAC', ARGV[14])
 if ARGV[10] == '1' and not string.match(redis.call('HGET', KEYS[1], 'Quota') or '', '^-?%d+$') then
   redis.call('HSET', KEYS[1], 'Quota', ARGV[11])
+  redis.call('HSET', KEYS[1], 'QuotaGeneration', ARGV[15])
+elseif redis.call('HEXISTS', KEYS[1], 'Quota') == 1 then
+  redis.call('HSETNX', KEYS[1], 'QuotaGeneration', ARGV[15])
 end
 redis.call('EXPIRE', KEYS[1], ARGV[12])
 return 1`
@@ -94,7 +98,7 @@ return 1`
 		[]string{getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id)},
 		user.AuthVersion, user.Id, user.Group, user.Email, user.Status, user.Role,
 		user.Username, user.Setting, user.CacheSchema, includeQuotaArg, user.Quota, ttl,
-		user.CacheExpiresAt, mac,
+		user.CacheExpiresAt, mac, uuid.NewString(),
 	).Int()
 	if err != nil {
 		return err

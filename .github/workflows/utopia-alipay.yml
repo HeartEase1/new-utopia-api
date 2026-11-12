@@ -12,7 +12,15 @@ jobs:
   payment:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      ALIPAY_TEST_REDIS_ADDR: '127.0.0.1:6379'
     services:
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=10
       mysql:
         image: mysql:8.0
         env:
@@ -39,6 +47,8 @@ jobs:
           go-version-file: go.mod
       - name: SQLite payment regression
         run: go test ./controller -run '^TestAlipayF2F$' -count=1 -v
+      - name: Record Redis version
+        run: docker exec $(docker ps -q --filter ancestor=redis:7) redis-server --version
       - name: MySQL payment regression
         env:
           ALIPAY_TEST_DIALECT: mysql
@@ -50,7 +60,9 @@ jobs:
           ALIPAY_TEST_DSN: 'postgres://utopia:test-only@127.0.0.1:5432/utopia_test?sslmode=disable'
         run: go test ./controller -run '^TestAlipayF2F$' -count=1 -v
       - name: Existing payment regressions
-        run: go test ./model ./controller ./service ./middleware -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|RateLimit' -count=1
+        run: |
+          go test ./model -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|Quota|Reserve|Redemption|Redeem|AuthCache|UserAuth' -count=1
+          go test ./controller ./service ./middleware -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|RateLimit' -count=1
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15

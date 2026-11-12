@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -168,14 +169,28 @@ func cacheDecrUserQuota(userId int, delta int64) error {
 	return cacheIncrUserQuota(userId, -delta)
 }
 
-// syncCreditUserQuotaCache 在授信事务（充值/兑换等）提交后同步把增量补进缓存
-// 余额。预扣以缓存值为准（存在期间），授信不能绕过它，否则新到账的额度在
-// 缓存过期前不可用；缓存未命中无需处理，下次读取会从已提交的数据库余额水合。
-func syncCreditUserQuotaCache(userId int, quota int, operation string) {
-	if quota <= 0 {
+// quotaCreditCache identifies the balance cache that existed before a database
+// credit. A replacement cache may already contain that credit from hydration.
+type quotaCreditCache struct {
+	generation string
+}
+
+// syncCreditUserQuotaCache applies a committed credit only to the exact cache
+// balance observed before the transaction's wallet update. Missing/replaced
+// caches hydrate from the database; ambiguous races can delay visibility until
+// cache expiry, but must never create spendable credit twice.
+func syncCreditUserQuotaCache(userId int, quota int, operation string, snapshot quotaCreditCache) {
+	if quota <= 0 || !common.RedisEnabled || snapshot.generation == "" {
 		return
 	}
-	if err := cacheIncrUserQuota(userId, int64(quota)); err != nil {
+	const script = `
+if redis.call('HGET', KEYS[1], 'QuotaGeneration') ~= ARGV[1]
+  or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
+  return 0
+end
+redis.call('HINCRBY', KEYS[1], 'Quota', ARGV[2])
+return 1`
+	if err := common.RDB.Eval(context.Background(), script, []string{getUserCacheKey(userId)}, snapshot.generation, quota).Err(); err != nil {
 		common.SysLog(common.LogText("failed to sync %s credit to user quota cache: %s", operation, err.Error()))
 	}
 }
