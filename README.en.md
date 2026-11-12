@@ -255,7 +255,7 @@ See the [environment example](./.env.example), [environment reference](https://d
 
 For production, put the console behind HTTPS and configure your reverse proxy for streaming and WebSocket upgrades. Persist and back up the database and mounted data. Multi-node deployments must share the main database and authentication secrets; separate Redis instances or in-memory rate limiters count limits independently per node. The session guide describes propagation behavior for each topology.
 
-Use a tested image digest from this fork’s [successful build summary](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml). `rc49-alipay` moves after successful builds. Follow the [production migration and rollback guide](MIGRATION.md), keep the production database, and deploy the exact image tested in isolation.
+The default `rc49-alipay` tag follows successful builds. Update in your existing Compose directory with `docker compose pull new-api` followed by `docker compose up -d --no-deps new-api`; back up first. Pinning a commit tag or digest is optional. For an existing official installation, follow the [migration and rollback guide](MIGRATION.md).
 
 <a id="development"></a>
 

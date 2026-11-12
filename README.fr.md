@@ -236,7 +236,7 @@ Consultez l'[exemple d'environnement](./.env.example), la [référence des varia
 
 En production, utilisez HTTPS et configurez le proxy inverse pour le streaming et WebSocket. Conservez et sauvegardez les bases et les données montées. Tous les nœuds doivent partager la base principale et les secrets d'authentification ; des Redis distincts ou des limiteurs en mémoire comptent les limites séparément par nœud. Le guide des sessions détaille la propagation selon la topologie.
 
-Fixez le digest testé indiqué dans le [résumé de compilation de ce fork](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml). Le tag `rc49-alipay` évolue après chaque compilation réussie. Suivez le [guide de migration et de retour arrière](MIGRATION.md), conservez la base de production et déployez exactement l’image testée.
+Le tag `rc49-alipay` suit les compilations réussies. Après sauvegarde, exécutez `docker compose pull new-api`, puis `docker compose up -d --no-deps new-api` dans le répertoire Compose existant. Le verrouillage par tag de commit ou digest reste facultatif. Pour une installation officielle existante, suivez le [guide de migration et de retour arrière](MIGRATION.md).
 
 <a id="development"></a>
 

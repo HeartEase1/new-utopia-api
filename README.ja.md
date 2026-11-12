@@ -236,7 +236,7 @@ docker compose logs -f new-api
 
 本番環境では HTTPS を使い、リバースプロキシでストリーミングと WebSocket アップグレードを有効にします。データベースとマウントデータを永続化し、バックアップしてください。複数ノードはメインデータベースと認証シークレットを共有します。独立した Redis やメモリ内のレート制限はノードごとに計数します。構成別のセッション伝播については認証の説明を参照してください。
 
-本フォークの[成功したビルドの Summary](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml)から検証済み digest を固定してください。`rc49-alipay` はビルド成功時に更新されます。[切り替え・ロールバック手順](MIGRATION.md)に従い、本番データベースを保持して同一のテスト済みイメージを使用してください。
+既定の `rc49-alipay` タグは成功したビルドに更新されます。バックアップ後、既存の Compose ディレクトリで `docker compose pull new-api`、続いて `docker compose up -d --no-deps new-api` を実行すれば更新できます。コミットタグや digest の固定は任意です。公式版からの移行は[切り替え・ロールバック手順](MIGRATION.md)を参照してください。
 
 <a id="development"></a>
 

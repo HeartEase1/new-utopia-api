@@ -235,7 +235,7 @@ docker compose logs -f new-api
 
 正式部署時使用 HTTPS，並設定反向代理支援串流回應與 WebSocket 升級。持久化並備份資料庫和掛載資料。多節點必須共用主資料庫和驗證金鑰；獨立 Redis 或記憶體限流器會按節點分別計數。不同拓撲下的工作階段傳播行為見驗證文件。
 
-從本儲存庫[成功建置的 Summary](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml) 取得並固定測試過的映像 digest。`rc49-alipay` 會隨成功建置更新。請依照[正式環境切換與回退教學](MIGRATION.md)，保留正式資料庫並使用同一份已驗收映像。
+預設使用 `rc49-alipay` 標籤，隨本儲存庫成功建置更新。更新前先備份，在原 Compose 目錄執行 `docker compose pull new-api`，再執行 `docker compose up -d --no-deps new-api`，無需每次修改映像地址。鎖定提交標籤或 digest 為可選方式。既有官方站點請先依照[切換與回退教學](MIGRATION.md)操作。
 
 <a id="development"></a>
 

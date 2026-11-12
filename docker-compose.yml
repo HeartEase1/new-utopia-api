@@ -1,6 +1,7 @@
 # New-API Docker Compose Configuration
 # New Utopia fork: new installations only; existing production sites follow MIGRATION.md.
-# Pin UTOPIA_IMAGE to your tested ghcr.io digest before deploying to production.
+# Updates: docker compose pull new-api && docker compose up -d --no-deps new-api
+# UTOPIA_IMAGE optionally overrides the default tag with a specific version/digest.
 # Alipay credentials and callbacks: see ALIPAY.md.
 # 
 # Quick Start:

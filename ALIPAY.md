@@ -31,9 +31,8 @@
 
 向 `utopia/alipay-rc49` 推送后，[New Utopia Alipay checks](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml) 会先运行支付三数据库测试和前端检查，再原生构建 `linux/amd64`、`linux/arm64` 镜像，检查容器启动、状态接口和内嵌前端，最后发布到 GitHub Container Registry（GHCR）。服务器无需安装 Go、Bun 或自行编译，也不需要 Docker Hub 凭据。
 
-- 测试入口：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`，随成功构建更新。
-- 提交标签：`ghcr.io/heartease1/new-utopia-api:sha-完整40位提交哈希`。
-- 正式部署使用 digest：`ghcr.io/heartease1/new-utopia-api@sha256:...`，从成功流水线的 Summary 复制。它唯一确定镜像内容。
+- 默认镜像：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`，测试和生产均可使用，随成功构建更新。
+- 可选锁定版本：提交标签 `ghcr.io/heartease1/new-utopia-api:sha-完整40位提交哈希`，或 digest `ghcr.io/heartease1/new-utopia-api@sha256:...`（成功流水线的 Summary 中可查）。默认无需填写 digest。
 
 必须等待工作流的 **Publish multi-architecture image** 成功，单独测试通过不代表镜像已经发布。本仓库的 GHCR 镜像已公开，可匿名拉取，无需 Docker Hub 账号。若服务器访问不了 `ghcr.io`，需先解决该服务器的网络访问；GitHub 镜像不会自动同步到国内镜像站。
 
@@ -92,15 +91,15 @@ docker compose up -d --no-deps new-api
 
 `.env` 修改后用 `up -d` 重建容器；单纯 `restart` 不会载入更新后的环境变量。`SANDBOX=false` 表示真实收款；沙箱必须使用沙箱应用和对应密钥，不能混用正式凭据。
 
-### 3. 固定镜像并观察一天
+### 3. 观察一天
 
-先获取本次实际运行镜像的 digest：
+记录本次实际运行的镜像，便于之后核对版本；无需修改 `.env`：
 
 ```sh
 docker image inspect "$(docker inspect --format '{{.Image}}' "$(docker compose ps -q new-api)")" --format '{{range .RepoDigests}}{{println .}}{{end}}'
 ```
 
-把输出中的 `ghcr.io/heartease1/new-utopia-api@sha256:...` 写入 `.env` 的 `UTOPIA_IMAGE`，再次运行 `docker compose up -d --no-deps new-api`。后续测试和上线始终使用该地址，避免浮动标签在测试中途更新。
+继续使用默认 `rc49-alipay` 标签即可。新镜像发布不会自动替换正在运行的容器；测试期间不执行 `pull` 更新即可保持当前版本。若测试结束前标签已有新构建，生产拉取的可能是更新版本，需要重新确认验收；需要完全复用已验收版本时，可选用上面的 digest 锁定。
 
 建议至少验证以下场景，并连续观察一天：
 
@@ -117,11 +116,11 @@ docker image inspect "$(docker inspect --format '{{.Image}}' "$(docker compose p
 
 逐步命令、备份示例和回退操作见 **[生产环境切换教程](MIGRATION.md)**。以下是流程概览。
 
-**上线同步的是测试通过的镜像和必要配置，不是测试数据库。不要把测试用户、订单或余额覆盖到生产。**
+**上线同步的是镜像和必要配置，不是测试数据库。不要把测试用户、订单或余额覆盖到生产。**
 
-1. 记录测试镜像 digest 和线上旧镜像 digest，备份线上数据库、Compose、环境变量及数据文件，验证备份可恢复。
+1. 记录测试和线上当前镜像，备份线上数据库、Compose、环境变量及数据文件，验证备份可恢复。
 2. 在原生产 Compose 所在目录，参考 `docker-compose.alipay.example.yml` 合并支付宝环境变量和 secret 挂载。保留原数据库类型、连接、数据卷、项目名、会话密钥及其余环境设置，不使用测试 Compose 替换线上文件。
-3. 将原应用服务的 `image` 改为测试通过的 `ghcr.io/...@sha256:...`。设置生产 `ALIPAY_F2F_NOTIFY_URL=https://正式域名/api/alipay-f2f/notify`，先保持 `ALIPAY_F2F_ENABLED=false`。密钥文件必须在生产服务器重新放置到对应路径。
+3. 将原应用服务的 `image` 改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`（也可使用示例中的 `UTOPIA_IMAGE` 默认值写法）。设置生产 `ALIPAY_F2F_NOTIFY_URL=https://正式域名/api/alipay-f2f/notify`，先保持 `ALIPAY_F2F_ENABLED=false`。密钥文件必须在生产服务器重新放置到对应路径。
 4. 在生产 Compose 目录执行（服务名示例为 `new-api`，以实际名称为准）：
 
 ```sh
@@ -134,7 +133,19 @@ docker compose logs --tail=100 new-api
 
 5. 确认原用户、余额、API 调用正常后开启当面付，重建应用并做一次生产小额支付，确认真实回调和入账。
 
-如果使用额外 Compose 文件合并，所有 `config/pull/up/logs` 命令都必须同时传入原文件和覆盖文件：`docker compose -f docker-compose.yml -f docker-compose.alipay.example.yml ...`。示例依赖 `.env` 中的 `UTOPIA_IMAGE`、支付宝变量，以及当前目录下的密钥文件。
+如果使用额外 Compose 文件合并，所有 `config/pull/up/logs` 命令都必须同时传入原文件和覆盖文件：`docker compose -f docker-compose.yml -f docker-compose.alipay.example.yml ...`。示例需要支付宝变量和当前目录下的密钥文件；`UTOPIA_IMAGE` 可省略。若它原来填写了旧 digest，将其改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay` 或删除这一行以使用默认值。
+
+## 以后如何更新
+
+默认标签无需每次修改 Compose 或 `.env`。先备份并查看更新内容，等待 GitHub 镜像发布成功，再在原部署目录执行：
+
+```sh
+docker compose pull new-api
+docker compose up -d --no-deps new-api
+docker compose logs --tail=100 new-api
+```
+
+只更新应用，不连带升级数据库和 Redis。使用自定义项目名、环境文件或多个 Compose 文件时，继续带上原来的全部参数。`pull` 下载该标签的最新成功发布镜像，`up -d` 应用更新；没有新镜像时不会为了更新而强制重建。若以前锁定过 digest，须先按上一段改回默认标签，否则仍会拉取旧版本。
 
 切换镜像不需要搬迁数据库，本版也不新增数据库结构。单实例重建会短暂中断服务，安排维护窗口。不要运行 `down -v`。
 
