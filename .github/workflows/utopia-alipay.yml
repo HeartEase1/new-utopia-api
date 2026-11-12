@@ -93,14 +93,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - name: Validate test Compose configuration
-        env:
-          POSTGRES_PASSWORD: ci-only-not-a-production-password
-          SESSION_SECRET: ci-only-not-a-production-session-secret
-          TEST_ORIGIN: https://test.example.com
-          ALIPAY_F2F_APP_ID: 'test-app'
-          ALIPAY_F2F_SELLER_ID: 'test-seller'
-        run: docker compose -f docker-compose.alipay.test.yml config --quiet
+      - name: Validate Compose configuration
+        run: docker compose -f docker-compose.yml config --quiet
       - name: Set image version
         run: echo "v1.0.0-rc.49-utopia-${GITHUB_SHA:0:12}" > VERSION
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c

@@ -54,13 +54,7 @@ gzip -t "$backup_dir/old-image.tar.gz"
 ghcr.io/heartease1/new-utopia-api:rc49-alipay
 ```
 
-无需在 `.env` 填写 digest。若已经设置 `UTOPIA_IMAGE=...@sha256:...`，把它改为以下标签，或删除这一行以使用第 5 步的默认镜像值，其他环境配置保留：
-
-```dotenv
-UTOPIA_IMAGE=ghcr.io/heartease1/new-utopia-api:rc49-alipay
-```
-
-如果使用 `--env-file`，编辑那个文件。镜像已公开，支持 amd64/arm64，无需登录；可在维护前预先下载，不改变运行中的容器：
+直接在原 Compose 的应用服务中填写上面的 `image` 地址，无需新增 `UTOPIA_IMAGE` 环境变量。镜像已公开，支持 amd64/arm64，可提前拉取：
 
 ```bash
 docker pull ghcr.io/heartease1/new-utopia-api:rc49-alipay
@@ -124,7 +118,7 @@ services:
 ```yaml
 services:
   new-api:
-    image: "${UTOPIA_IMAGE:-ghcr.io/heartease1/new-utopia-api:rc49-alipay}"
+    image: ghcr.io/heartease1/new-utopia-api:rc49-alipay
 ```
 
 **以上只是片段，不是完整文件，不能覆盖原 Compose。** 保留所有原 `environment`、`volumes`、`ports`、`networks`、`depends_on`。有其他覆盖文件重复定义 `image:` 时也要调整；若有 `build:`，此次不执行本地构建。
@@ -160,7 +154,7 @@ docker exec "$container_id" wget -qO- http://127.0.0.1:3000/api/status
 
 **如果出现初始化向导或数据为空，不要重新创建管理员。** 先核对项目名、原目录、数据卷和 `SQL_DSN`，确认连接的是原生产库。
 
-再按 [支付宝配置说明](ALIPAY.md#配置) 合并环境变量与 secret 挂载，[支付覆盖文件](docker-compose.alipay.example.yml)可作参考，服务名和路径按实际调整。正式密钥放在生产服务器，回调改成：
+再按 [支付宝配置片段](ALIPAY.md#2-只追加支付宝配置)，在原 `new-api` 的 `environment` 和 `volumes` 中追加支付宝变量及两行只读密钥挂载。保留原字段，不替换完整服务、不新增数据库或 Redis 服务。正式密钥放在生产服务器，回调改成：
 
 ```text
 https://你的正式域名/api/alipay-f2f/notify
@@ -174,7 +168,7 @@ dc up -d --no-deps --no-build new-api
 dc logs --tail=100 new-api
 ```
 
-单纯 `restart` 不会载入修改后的环境变量。若新增覆盖文件，将其 `-f` 参数加进 `dc()`，此后所有命令都使用相同文件顺序。
+单纯 `restart` 不会载入修改后的环境变量。继续使用原有 Compose 文件和参数，无需额外覆盖文件。
 
 完成一次小额真实支付，核对支付宝实付、订单和余额，重复查单不应重复入账。继续观察并保留备份和旧镜像。
 
@@ -188,7 +182,7 @@ dc up -d --no-deps --no-build new-api
 dc logs --tail=100 new-api
 ```
 
-无需每次编辑镜像地址。第 2 步备份的当前镜像既可以是官方镜像，也可以是上一版二开镜像；更新出问题时可按下一节恢复该镜像。若 `UTOPIA_IMAGE` 仍锁定旧 digest，先改回第 3 步的默认标签。
+无需每次编辑镜像地址。第 2 步备份的当前镜像既可以是官方镜像，也可以是上一版二开镜像；更新出问题时可按下一节恢复该镜像。若应用镜像原来使用 digest，将 `image` 直接改为第 3 步的标签。
 
 ## 8. 出问题如何回退镜像
 
@@ -223,7 +217,7 @@ dc logs --tail=100 new-api
 
 | 项目 | 新建测试站 | 切换现有生产站 |
 | --- | --- | --- |
-| Compose | 使用 `docker-compose.alipay.test.yml` | 编辑原生产 Compose |
+| Compose | 根目录 `docker-compose.yml` | 编辑原生产 Compose |
 | 数据库 | 独立库或隔离副本 | 原生产数据库 |
 | 管理员 | 初始化测试管理员 | 原管理员，不重新初始化 |
 | 镜像 | 默认 `rc49-alipay` | 默认 `rc49-alipay` |

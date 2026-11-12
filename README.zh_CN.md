@@ -28,7 +28,7 @@ docker compose up -d --no-deps new-api
 docker compose logs --tail=100 new-api
 ```
 
-若 `.env` 中 `UTOPIA_IMAGE` 以前固定了 `@sha256:...`，先改回 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`，并确认最终 `image` 使用该标签。服务名和自定义 Compose 参数按原项目保留。
+应用 `image` 直接使用上面的标签即可，无需新增镜像环境变量。服务名和自定义 Compose 参数按原项目保留。
 
 标签随本仓库成功构建更新，但不会自动替换运行中的容器。官方更新需先合并到二开版本并发布镜像。
 
@@ -248,9 +248,9 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-**已有官方版本正在运行？先看[生产环境切换教程](MIGRATION.md)。以下 clone 和初始化步骤只用于新建实例；现有站点应在原 Compose 目录中修改镜像。** 当面付测试部署请使用[专用测试配置](docker-compose.alipay.test.yml)，并按[支付宝说明](ALIPAY.md)配置密钥与回调。
+**已有官方版本正在运行？先看[生产环境切换教程](MIGRATION.md)。以下 clone 和初始化步骤只用于新建实例；现有站点应在原 Compose 目录中修改镜像。** 测试也使用同一份[官方结构的 Compose](docker-compose.yml)，只需按[支付宝说明](ALIPAY.md)追加支付环境变量和只读密钥挂载。
 
-仓库的 [Compose 配置](./docker-compose.yml) 默认启动 **New API + PostgreSQL + Redis**，并提供 MySQL 和独立 ClickHouse 日志库的配置示例。支付宝独立测试配置也自带隔离的 **PostgreSQL + Redis**；现有生产站点的支付宝覆盖示例只负责增加支付配置，因此按说明合并到原 Compose，不单独启动数据库。
+仓库的 [Compose 配置](./docker-compose.yml) 默认启动 **New API + PostgreSQL + Redis**，并提供 MySQL 和独立 ClickHouse 日志库的配置示例。与官方 rc.49 相比，运行配置只更换应用镜像；支付宝配置默认注释，需要时在同一文件中启用。
 
 ```bash
 git clone https://github.com/HeartEase1/new-utopia-api.git

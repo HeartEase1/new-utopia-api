@@ -214,7 +214,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-**Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** For Alipay testing, use the [test Compose file](docker-compose.alipay.test.yml) and [Alipay guide](ALIPAY.md).
+**Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** Use the same [Compose file](docker-compose.yml) for testing; append only the payment variables and read-only key mounts described in the [Alipay guide](ALIPAY.md).
 
 The repository's [Compose configuration](./docker-compose.yml) starts **New API + PostgreSQL + Redis** by default. It also contains examples for MySQL and a separate ClickHouse log database.
 

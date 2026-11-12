@@ -34,7 +34,7 @@ docker compose up -d --no-deps new-api
 docker compose logs --tail=100 new-api
 ```
 
-无需每次修改镜像地址。若 `.env` 中的 `UTOPIA_IMAGE` 以前填过 `@sha256:...`，先改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`，同时确认最终生效的 `image` 使用此标签。自定义 `-p`、`--env-file` 或多个 `-f` 参数需继续保留。
+无需每次修改镜像地址。应用 `image` 直接使用上面的标签即可，无需新增镜像环境变量。自定义 `-p`、`--env-file` 或多个 `-f` 参数需继续保留。
 
 新镜像发布不会自动替换运行中的容器；执行上述命令才会更新。官方 New API 的新版仍需先合并到本二开分支并发布镜像。
 
@@ -254,9 +254,9 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-**Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** For Alipay testing, use the [test Compose file](docker-compose.alipay.test.yml) and [Alipay guide](ALIPAY.md).
+**Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** Use the same [Compose file](docker-compose.yml) for testing; append only the payment variables and read-only key mounts described in the [Alipay guide](ALIPAY.md).
 
-The repository's [Compose configuration](./docker-compose.yml) starts **New API + PostgreSQL + Redis** by default. It also contains examples for MySQL and a separate ClickHouse log database. The standalone Alipay test Compose also includes isolated PostgreSQL and Redis services. The production Alipay overlay only adds payment configuration and must be merged with your existing Compose project.
+The repository's [Compose configuration](./docker-compose.yml) starts **New API + PostgreSQL + Redis** by default. It also contains examples for MySQL and a separate ClickHouse log database. Compared with official rc.49, the active configuration only changes the application image; optional Alipay settings are commented out in the same file.
 
 ```bash
 git clone https://github.com/HeartEase1/new-utopia-api.git

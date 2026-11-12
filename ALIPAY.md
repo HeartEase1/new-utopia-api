@@ -37,40 +37,22 @@
 
 ## 在独立服务器用 Docker Compose 测试
 
-以下命令适用于 Linux，要求 Docker Engine 与 Compose v2。建议使用独立 HTTPS 测试域名，例如 `https://test.example.com`。独立测试 Compose 会同时启动 New API、PostgreSQL 15 和 Redis 7，均使用测试专属的容器与数据卷，不连接线上数据库。若线上使用 MySQL/SQLite，还应在同类型数据库的隔离副本上验证启动与升级。
+测试服务器也使用仓库根目录的 `docker-compose.yml`，与官方 rc.49 保持相同的服务、端口、数据卷和网络结构：**New API + PostgreSQL + Redis**。二开只更换应用镜像，额外提供默认注释的支付宝环境变量和只读密钥挂载。
 
-### 1. 下载配置与准备密钥
+测试请放在另一台服务器，使用独立数据库和测试域名，不连接生产数据库。若线上使用 MySQL/SQLite，测试时也应采用同类型数据库的隔离副本。
+
+### 1. 使用官方相同的 Compose 方式部署
 
 ```sh
-mkdir -p /opt/new-utopia-test/secrets
-cd /opt/new-utopia-test
-curl -fL https://raw.githubusercontent.com/HeartEase1/new-utopia-api/HEAD/docker-compose.alipay.test.yml -o compose.yml
+git clone https://github.com/HeartEase1/new-utopia-api.git
+cd new-utopia-api
+mkdir -p secrets
 chmod 700 secrets
 ```
 
-将应用私钥保存为 `secrets/alipay-app-private.pem`，支付宝公钥保存为 `secrets/alipay-public.pem`。私钥只放在服务器，不上传 GitHub。然后限制文件权限：
+编辑根目录 `docker-compose.yml`，按官方部署方式设置数据库与 Redis 密码（服务端和连接串同时修改）、持久的随机 `SESSION_SECRET`。用 `openssl rand -hex 32` 生成随机值，替换示例值。保留官方服务结构，无需额外的测试 Compose 或覆盖文件。
 
 ```sh
-chmod 600 secrets/*.pem
-openssl rand -hex 32
-openssl rand -hex 32
-```
-
-上述两个随机值分别用于数据库密码和会话密钥。在当前目录创建 `.env`（替换全部占位值；`TEST_ORIGIN` 不带结尾斜杠）：
-
-```dotenv
-UTOPIA_IMAGE=ghcr.io/heartease1/new-utopia-api:rc49-alipay
-POSTGRES_PASSWORD=替换为第一个随机值
-SESSION_SECRET=替换为第二个随机值
-TEST_ORIGIN=https://test.example.com
-ALIPAY_F2F_APP_ID=你的应用ID
-ALIPAY_F2F_SELLER_ID=你的商户PID
-ALIPAY_F2F_ENABLED=false
-ALIPAY_F2F_SANDBOX=false
-```
-
-```sh
-chmod 600 .env
 docker compose config --quiet
 docker compose pull
 docker compose up -d
@@ -78,17 +60,47 @@ docker compose ps
 docker compose logs --tail=100 new-api
 ```
 
-### 2. 配置 HTTPS 和后台
+默认与官方一样将宿主机 3000 映射到应用 3000。测试域名通过宿主机 Nginx/Caddy/宝塔反向代理到 `http://127.0.0.1:3000`，启用 HTTPS 并正确转发 Host、`X-Forwarded-Proto`。公网访问控制按你的原部署方式配置；数据库和 Redis 默认不发布宿主机端口。
 
-在宿主机 Nginx/Caddy/宝塔中，将测试域名反向代理到 `http://127.0.0.1:3001`，启用 HTTPS、转发原始 Host 与 `X-Forwarded-Proto`，允许 `/api/alipay-f2f/notify` 的 POST 请求。3001 端口只绑定本机。若反向代理本身也在容器内，需改为共享 Docker 网络访问应用，不能使用该代理容器的 `127.0.0.1`。
+通过 HTTPS 控制台访问时，取消官方模板中 `SESSION_COOKIE_SECURE` 和 `SESSION_COOKIE_TRUSTED_URL` 两行的注释，设置为 `true` 和实际测试站点的 HTTPS Origin。反向代理在容器内时通过共享 Docker 网络访问应用，不能用代理容器的 `127.0.0.1`。
 
-通过 HTTPS 测试域名完成管理员初始化，在后台设置测试站点地址、充值参数及支付合规确认。初次启动入口关闭，完成配置后将 `.env` 的 `ALIPAY_F2F_ENABLED` 改为 `true`，执行：
+### 2. 只追加支付宝配置
+
+将应用私钥保存为 `secrets/alipay-app-private.pem`，支付宝公钥保存为 `secrets/alipay-public.pem`：
 
 ```sh
+chmod 600 secrets/*.pem
+```
+
+编辑**同一份** `docker-compose.yml`，在 `new-api` 原有的 `volumes` 和 `environment` 中取消支付宝配置行的注释，填写你的真实值。下面是需要新增的片段，不能覆盖完整文件或原有字段：
+
+```yaml
+services:
+  new-api:
+    image: ghcr.io/heartease1/new-utopia-api:rc49-alipay
+    volumes:
+      # 保留原来的数据、日志挂载，仅追加下面两行。
+      - ./secrets/alipay-app-private.pem:/run/secrets/alipay_app_private_key:ro
+      - ./secrets/alipay-public.pem:/run/secrets/alipay_public_key:ro
+    environment:
+      # 保留原来的 SQL_DSN、REDIS_CONN_STRING 等变量，仅追加下面各行。
+      - ALIPAY_F2F_ENABLED=false
+      - ALIPAY_F2F_APP_ID=你的应用ID
+      - ALIPAY_F2F_SELLER_ID=你的商户PID
+      - ALIPAY_F2F_NOTIFY_URL=https://你的测试域名/api/alipay-f2f/notify
+      - ALIPAY_F2F_PRIVATE_KEY_FILE=/run/secrets/alipay_app_private_key
+      - ALIPAY_F2F_PUBLIC_KEY_FILE=/run/secrets/alipay_public_key
+      - ALIPAY_F2F_SANDBOX=false
+```
+
+密钥文件必须先创建为普通文件再启动容器。后台完成支付合规确认、充值价格和最低额度配置，确保回调 POST 可以从公网访问，再把 `ALIPAY_F2F_ENABLED` 改为 `true`：
+
+```sh
+docker compose config --quiet
 docker compose up -d --no-deps new-api
 ```
 
-`.env` 修改后用 `up -d` 重建容器；单纯 `restart` 不会载入更新后的环境变量。`SANDBOX=false` 表示真实收款；沙箱必须使用沙箱应用和对应密钥，不能混用正式凭据。
+`up -d` 会应用环境变量和挂载更新；单纯 `restart` 不会重新加载 Compose 配置。`SANDBOX=false` 表示真实收款；沙箱模式必须搭配沙箱应用和密钥，不能混用正式凭据。
 
 ### 3. 观察一天
 
@@ -112,8 +124,8 @@ docker compose up -d --no-deps new-api
 **上线同步的是镜像和必要配置，不是测试数据库。不要把测试用户、订单或余额覆盖到生产。**
 
 1. 记录测试和线上当前镜像，备份线上数据库、Compose、环境变量及数据文件，验证备份可恢复。
-2. 在原生产 Compose 所在目录，参考 `docker-compose.alipay.example.yml` 合并支付宝环境变量和 secret 挂载。保留原数据库类型、连接、数据卷、项目名、会话密钥及其余环境设置，不使用测试 Compose 替换线上文件。
-3. 将原应用服务的 `image` 改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`（也可使用示例中的 `UTOPIA_IMAGE` 默认值写法）。设置生产 `ALIPAY_F2F_NOTIFY_URL=https://正式域名/api/alipay-f2f/notify`，先保持 `ALIPAY_F2F_ENABLED=false`。密钥文件必须在生产服务器重新放置到对应路径。
+2. 在原生产 Compose 所在目录，按上面的配置片段追加支付宝环境变量与只读密钥挂载。保留原数据库、Redis、端口、数据卷、项目名和全部现有环境配置，不用仓库模板覆盖生产文件。
+3. 将原应用服务的 `image` 改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`。设置生产 `ALIPAY_F2F_NOTIFY_URL=https://正式域名/api/alipay-f2f/notify`，先保持 `ALIPAY_F2F_ENABLED=false`。密钥文件必须在生产服务器重新放置到对应路径。
 4. 在生产 Compose 目录执行（服务名示例为 `new-api`，以实际名称为准）：
 
 ```sh
@@ -126,7 +138,7 @@ docker compose logs --tail=100 new-api
 
 5. 确认原用户、余额、API 调用正常后开启当面付，重建应用并做一次生产小额支付，确认真实回调和入账。
 
-如果使用额外 Compose 文件合并，所有 `config/pull/up/logs` 命令都必须同时传入原文件和覆盖文件：`docker compose -f docker-compose.yml -f docker-compose.alipay.example.yml ...`。示例需要支付宝变量和当前目录下的密钥文件；`UTOPIA_IMAGE` 可省略。若它原来填写了旧 digest，将其改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay` 或删除这一行以使用默认值。
+只使用原项目的 Compose 配置。若你之前使用了 `UTOPIA_IMAGE` 或 digest 写法，将应用 `image` 直接改为上面的地址即可，其他已有环境变量保留。
 
 ## 以后如何更新
 
@@ -138,7 +150,7 @@ docker compose up -d --no-deps new-api
 docker compose logs --tail=100 new-api
 ```
 
-只更新应用，不连带升级数据库和 Redis。使用自定义项目名、环境文件或多个 Compose 文件时，继续带上原来的全部参数。`pull` 下载该标签的最新成功发布镜像，`up -d` 应用更新；没有新镜像时不会为了更新而强制重建。若以前锁定过 digest，须先按上一段改回默认标签，否则仍会拉取旧版本。
+只更新应用，不连带升级数据库和 Redis。使用自定义项目名、环境文件或多个 Compose 文件时，继续带上原来的全部参数。`pull` 下载该标签的最新成功发布镜像，`up -d` 应用更新；没有新镜像时不会为了更新而强制重建。若应用 `image` 以前固定了 digest，先改为上面的标签。
 
 切换镜像不需要搬迁数据库，本版也不新增数据库结构。单实例重建会短暂中断服务，安排维护窗口。不要运行 `down -v`。
 
