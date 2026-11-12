@@ -1,3 +1,5 @@
+> **新乌托邦二开版**：基于官方 `v1.0.0-rc.49`，新增支付宝当面付余额充值。请先阅读 [Docker Compose 测试与上线说明](ALIPAY.md)。镜像：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`，仅在本仓库自动检查、镜像构建与启动检查通过后发布。下方保留上游项目说明。
+
 <div align="center">
 
 ![new-api](/web/public/logo.png)

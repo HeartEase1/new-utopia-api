@@ -2,11 +2,9 @@
 # docker compose -f docker-compose.yml -f docker-compose.alipay.example.yml up -d --no-deps new-api
 services:
   new-api:
-    image: new-utopia-api:rc49-alipay.1
-    build:
-      context: .
+    image: "${UTOPIA_IMAGE:?Set the tested ghcr.io image digest}"
     environment:
-      ALIPAY_F2F_ENABLED: "true"
+      ALIPAY_F2F_ENABLED: "${ALIPAY_F2F_ENABLED:-false}"
       ALIPAY_F2F_APP_ID: "${ALIPAY_F2F_APP_ID:?Set your Alipay application ID}"
       ALIPAY_F2F_SELLER_ID: "${ALIPAY_F2F_SELLER_ID:?Set your Alipay merchant PID}"
       ALIPAY_F2F_NOTIFY_URL: "${ALIPAY_F2F_NOTIFY_URL:?Set https://your-domain/api/alipay-f2f/notify}"

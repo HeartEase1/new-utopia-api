@@ -73,3 +73,98 @@ jobs:
           mapfile -t files < <(git diff --name-only v1.0.0-rc.49 HEAD -- '*.ts' '*.tsx')
           bunx oxlint -c .oxlintrc.json "${files[@]#web/}"
       - run: bun run build
+
+  image:
+    name: Build and smoke-test image (${{ matrix.arch }})
+    needs: [payment, frontend]
+    if: github.repository == 'HeartEase1/new-utopia-api' && github.ref == 'refs/heads/utopia/alipay-rc49'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Validate test Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-only-not-a-production-password
+          SESSION_SECRET: ci-only-not-a-production-session-secret
+          TEST_ORIGIN: https://test.example.com
+          ALIPAY_F2F_APP_ID: 'test-app'
+          ALIPAY_F2F_SELLER_ID: 'test-seller'
+        run: docker compose -f docker-compose.alipay.test.yml config --quiet
+      - name: Set image version
+        run: echo "v1.0.0-rc.49-utopia-${GITHUB_SHA:0:12}" > VERSION
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          provenance: false
+          tags: ghcr.io/heartease1/new-utopia-api:sha-${{ github.sha }}-${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/HeartEase1/new-utopia-api
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=utopia-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=utopia-${{ matrix.arch }}
+      - name: Verify container startup and embedded frontend
+        env:
+          IMAGE: ghcr.io/heartease1/new-utopia-api:sha-${{ github.sha }}-${{ matrix.arch }}
+        run: |
+          docker run -d --name utopia-smoke -p 127.0.0.1:3000:3000 "$IMAGE"
+          trap 'docker logs utopia-smoke; docker rm -f utopia-smoke' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/status > /tmp/status.json; then
+              break
+            fi
+            sleep 2
+          done
+          jq -e '.success == true' /tmp/status.json
+          curl -fsS http://127.0.0.1:3000/ | grep -q '<html'
+          docker push "$IMAGE"
+
+  publish:
+    name: Publish multi-architecture image
+    needs: [image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    # Serialize updates to the moving tag. Deployments should use the digest.
+    concurrency: utopia-image-publish
+    steps:
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and record immutable image address
+        env:
+          IMAGE: ghcr.io/heartease1/new-utopia-api
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:sha-$GITHUB_SHA" \
+            -t "$IMAGE:rc49-alipay" \
+            "$IMAGE:sha-$GITHUB_SHA-amd64" \
+            "$IMAGE:sha-$GITHUB_SHA-arm64"
+          docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" | tee /tmp/image.txt
+          DIGEST=$(awk '/^Digest:/ {print $2; exit}' /tmp/image.txt)
+          test -n "$DIGEST"
+          echo "### Deploy this tested image" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE@$DIGEST\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit tag: \`$IMAGE:sha-$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"

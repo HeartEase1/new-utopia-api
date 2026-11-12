@@ -1,0 +1,58 @@
+# Standalone TEST deployment. Do not replace your production Compose with this.
+name: new-utopia-test
+services:
+  new-api:
+    image: "${UTOPIA_IMAGE:-ghcr.io/heartease1/new-utopia-api:rc49-alipay}"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./test-data:/data
+      - ./test-logs:/app/logs
+    command: --log-dir /app/logs
+    environment:
+      SQL_DSN: "postgresql://utopia:${POSTGRES_PASSWORD:?Set a random hex database password}@postgres:5432/utopia_test?sslmode=disable"
+      SESSION_SECRET: "${SESSION_SECRET:?Set a random session secret}"
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_COOKIE_TRUSTED_URL: "${TEST_ORIGIN:?Set https://your-test-domain without trailing slash}"
+      TZ: Asia/Shanghai
+      ALIPAY_F2F_ENABLED: "${ALIPAY_F2F_ENABLED:-false}"
+      ALIPAY_F2F_APP_ID: "${ALIPAY_F2F_APP_ID:?Set Alipay application ID}"
+      ALIPAY_F2F_SELLER_ID: "${ALIPAY_F2F_SELLER_ID:?Set Alipay merchant PID}"
+      ALIPAY_F2F_NOTIFY_URL: "${TEST_ORIGIN:?Set test origin}/api/alipay-f2f/notify"
+      ALIPAY_F2F_PRIVATE_KEY_FILE: /run/secrets/alipay_app_private_key
+      ALIPAY_F2F_PUBLIC_KEY_FILE: /run/secrets/alipay_public_key
+      ALIPAY_F2F_SANDBOX: "${ALIPAY_F2F_SANDBOX:-false}"
+    secrets:
+      - alipay_app_private_key
+      - alipay_public_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/status | grep -q '\"success\":true'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  postgres:
+    image: postgres:15.19
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: utopia
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set a random hex database password}"
+      POSTGRES_DB: utopia_test
+    volumes:
+      - test_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U utopia -d utopia_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  test_pg_data:
+secrets:
+  alipay_app_private_key:
+    file: ./secrets/alipay-app-private.pem
+  alipay_public_key:
+    file: ./secrets/alipay-public.pem
