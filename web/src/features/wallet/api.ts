@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import { createServerError } from '@/lib/server-error-message'
 
 import type {
   RedemptionRequest,
@@ -44,6 +45,33 @@ import type {
 // ============================================================================
 // Wallet API Functions
 // ============================================================================
+
+export interface AlipayF2FOrder {
+  trade_no: string
+  qr_code: string
+  amount: string
+  expires_at: number
+}
+
+export async function requestAlipayF2F(
+  amount: number
+): Promise<AlipayF2FOrder> {
+  const res = await api.post('/api/user/alipay-f2f/pay', { amount })
+  if (!res.data.success) {
+    throw createServerError(res.data, 'Payment request failed')
+  }
+  return res.data.data
+}
+
+export async function queryAlipayF2FOrder(tradeNo: string): Promise<string> {
+  const res = await api.post('/api/user/alipay-f2f/query', {
+    trade_no: tradeNo,
+  })
+  if (!res.data.success) {
+    throw createServerError(res.data, 'Failed to query payment status')
+  }
+  return res.data.data.status
+}
 
 /**
  * Check if API response is successful

@@ -3,6 +3,10 @@
 *.md
 .vscode
 .gitignore
+.env
+.env.*
+secrets/
+.local-tests/
 Makefile
 docs
 .eslintcache

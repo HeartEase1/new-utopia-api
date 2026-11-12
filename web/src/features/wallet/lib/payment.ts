@@ -173,7 +173,7 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
     return DEFAULT_MIN_TOPUP
   }
 
-  if (topupInfo.enable_online_topup) {
+  if (topupInfo.enable_online_topup || topupInfo.enable_alipay_f2f_topup) {
     return topupInfo.min_topup
   }
 

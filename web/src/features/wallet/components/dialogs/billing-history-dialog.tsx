@@ -48,12 +48,14 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 
+import type { AlipayF2FOrder } from '../../api'
 import { useBillingHistory } from '../../hooks/use-billing-history'
 import {
   getStatusConfig,
   getPaymentMethodName,
   formatTimestamp,
 } from '../../lib/billing'
+import { AlipayF2FDialog } from './alipay-f2f-dialog'
 
 interface BillingHistoryDialogProps {
   open: boolean
@@ -78,7 +80,10 @@ export function BillingHistoryDialog({
     handlePageSizeChange,
     handleSearch,
     handleCompleteOrder,
+    refresh,
   } = useBillingHistory()
+
+  const [alipayOrder, setAlipayOrder] = useState<AlipayF2FOrder | null>(null)
 
   const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
@@ -266,6 +271,24 @@ export function BillingHistoryDialog({
                       </div>
 
                       {/* Admin Actions */}
+                      {!isAdmin &&
+                        record.payment_method === 'alipay_f2f' &&
+                        record.status === 'pending' && (
+                          <Button
+                            size='sm'
+                            variant='outline'
+                            onClick={() =>
+                              setAlipayOrder({
+                                trade_no: record.trade_no,
+                                amount: record.money.toFixed(2),
+                                qr_code: '',
+                                expires_at: 0,
+                              })
+                            }
+                          >
+                            {t('Check payment status')}
+                          </Button>
+                        )}
                       {isAdmin && record.status === 'pending' && (
                         <div className='mt-4 flex justify-end'>
                           <Button
@@ -323,6 +346,14 @@ export function BillingHistoryDialog({
       </Dialog>
 
       {/* Confirm Complete Order Dialog */}
+      {alipayOrder && (
+        <AlipayF2FDialog
+          key={alipayOrder.trade_no}
+          order={alipayOrder}
+          onClose={() => setAlipayOrder(null)}
+          onPaid={refresh}
+        />
+      )}
       <AlertDialog
         open={!!confirmTradeNo}
         onOpenChange={(open) => !open && setConfirmTradeNo(null)}

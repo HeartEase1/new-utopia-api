@@ -205,6 +205,11 @@ func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	)
 }
 
+// Payment polling is bounded per authenticated account, independently of IP.
+func AlipayF2FQueryRateLimit() func(c *gin.Context) {
+	return userRateLimitFactory(30, 60, "ALIPAY_F2F_QUERY")
+}
+
 func DownloadRateLimit() func(c *gin.Context) {
 	return rateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "DW")
 }

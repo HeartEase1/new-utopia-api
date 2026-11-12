@@ -1,0 +1,75 @@
+name: New Utopia Alipay checks
+
+on:
+  push:
+    branches: ['utopia/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  payment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test-only
+          MYSQL_DATABASE: utopia_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ptest-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: utopia
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: utopia_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U utopia"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+      - name: SQLite payment regression
+        run: go test ./controller -run '^TestAlipayF2F$' -count=1 -v
+      - name: MySQL payment regression
+        env:
+          ALIPAY_TEST_DIALECT: mysql
+          ALIPAY_TEST_DSN: 'root:test-only@tcp(127.0.0.1:3306)/utopia_test?charset=utf8mb4&parseTime=true'
+        run: go test ./controller -run '^TestAlipayF2F$' -count=1 -v
+      - name: PostgreSQL payment regression
+        env:
+          ALIPAY_TEST_DIALECT: postgres
+          ALIPAY_TEST_DSN: 'postgres://utopia:test-only@127.0.0.1:5432/utopia_test?sslmode=disable'
+        run: go test ./controller -run '^TestAlipayF2F$' -count=1 -v
+      - name: Existing payment regressions
+        run: go test ./model ./controller ./service ./middleware -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|RateLimit' -count=1
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.4'
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test src/features/wallet
+      - name: Lint modified frontend files
+        shell: bash
+        run: |
+          mapfile -t files < <(git diff --name-only v1.0.0-rc.49 HEAD -- '*.ts' '*.tsx')
+          bunx oxlint -c .oxlintrc.json "${files[@]#web/}"
+      - run: bun run build

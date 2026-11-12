@@ -1,0 +1,24 @@
+# Merge with your EXISTING Compose file; keep its database, volumes and secrets.
+# docker compose -f docker-compose.yml -f docker-compose.alipay.example.yml up -d --no-deps new-api
+services:
+  new-api:
+    image: new-utopia-api:rc49-alipay.1
+    build:
+      context: .
+    environment:
+      ALIPAY_F2F_ENABLED: "true"
+      ALIPAY_F2F_APP_ID: "${ALIPAY_F2F_APP_ID:?Set your Alipay application ID}"
+      ALIPAY_F2F_SELLER_ID: "${ALIPAY_F2F_SELLER_ID:?Set your Alipay merchant PID}"
+      ALIPAY_F2F_NOTIFY_URL: "${ALIPAY_F2F_NOTIFY_URL:?Set https://your-domain/api/alipay-f2f/notify}"
+      ALIPAY_F2F_PRIVATE_KEY_FILE: /run/secrets/alipay_app_private_key
+      ALIPAY_F2F_PUBLIC_KEY_FILE: /run/secrets/alipay_public_key
+      ALIPAY_F2F_SANDBOX: "${ALIPAY_F2F_SANDBOX:-false}"
+    secrets:
+      - alipay_app_private_key
+      - alipay_public_key
+
+secrets:
+  alipay_app_private_key:
+    file: ./secrets/alipay-app-private.pem
+  alipay_public_key:
+    file: ./secrets/alipay-public.pem

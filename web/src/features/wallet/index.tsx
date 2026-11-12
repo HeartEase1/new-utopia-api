@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/react-query'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -24,7 +25,9 @@ import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
 
+import { requestAlipayF2F, type AlipayF2FOrder } from './api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
+import { AlipayF2FDialog } from './components/dialogs/alipay-f2f-dialog'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
@@ -79,6 +82,14 @@ export function Wallet(props: WalletProps) {
   const [selectedCreemProduct, setSelectedCreemProduct] =
     useState<CreemProduct | null>(null)
   const [showSubscriptionPanel, setShowSubscriptionPanel] = useState(true)
+  const [alipayOrder, setAlipayOrder] = useState<AlipayF2FOrder | null>(null)
+  const alipayPayment = useMutation({
+    mutationFn: requestAlipayF2F,
+    onSuccess: (order) => {
+      setAlipayOrder(order)
+      setConfirmDialogOpen(false)
+    },
+  })
 
   const { status } = useStatus()
   const { currency } = useSystemConfig()
@@ -193,6 +204,11 @@ export function Wallet(props: WalletProps) {
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
+
+    if (selectedPaymentMethod.type === 'alipay_f2f') {
+      alipayPayment.mutate(Math.floor(topupAmount))
+      return
+    }
 
     const success = await dispatchSelectedPayment(
       selectedPaymentMethod,
@@ -360,7 +376,12 @@ export function Wallet(props: WalletProps) {
         paymentAmount={paymentAmount}
         paymentMethod={selectedPaymentMethod}
         calculating={calculating}
-        processing={processing || waffoProcessing || pancakeProcessing}
+        processing={
+          processing ||
+          waffoProcessing ||
+          pancakeProcessing ||
+          alipayPayment.isPending
+        }
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}
       />
@@ -377,6 +398,15 @@ export function Wallet(props: WalletProps) {
         open={billingDialogOpen}
         onOpenChange={setBillingDialogOpen}
       />
+
+      {alipayOrder && (
+        <AlipayF2FDialog
+          key={alipayOrder.trade_no}
+          order={alipayOrder}
+          onClose={() => setAlipayOrder(null)}
+          onPaid={fetchUser}
+        />
+      )}
 
       <CreemConfirmDialog
         open={creemDialogOpen}
