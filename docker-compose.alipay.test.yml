@@ -12,6 +12,7 @@ services:
     command: --log-dir /app/logs
     environment:
       SQL_DSN: "postgresql://utopia:${POSTGRES_PASSWORD:?Set a random hex database password}@postgres:5432/utopia_test?sslmode=disable"
+      REDIS_CONN_STRING: redis://redis:6379
       SESSION_SECRET: "${SESSION_SECRET:?Set a random session secret}"
       SESSION_COOKIE_SECURE: "true"
       SESSION_COOKIE_TRUSTED_URL: "${TEST_ORIGIN:?Set https://your-test-domain without trailing slash}"
@@ -28,6 +29,8 @@ services:
       - alipay_public_key
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/status | grep -q '\"success\":true'"]
@@ -48,6 +51,14 @@ services:
       test: ["CMD-SHELL", "pg_isready -U utopia -d utopia_test"]
       interval: 5s
       timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 10
 volumes:
   test_pg_data:

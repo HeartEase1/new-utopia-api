@@ -37,7 +37,7 @@
 
 ## 在独立服务器用 Docker Compose 测试
 
-以下命令适用于 Linux，要求 Docker Engine 与 Compose v2。建议使用独立 HTTPS 测试域名，例如 `https://test.example.com`。示例提供独立 PostgreSQL 15 数据库，不连接线上数据库；若线上使用 MySQL/SQLite，还应在同类型数据库的隔离副本上验证启动与升级。
+以下命令适用于 Linux，要求 Docker Engine 与 Compose v2。建议使用独立 HTTPS 测试域名，例如 `https://test.example.com`。独立测试 Compose 会同时启动 New API、PostgreSQL 15 和 Redis 7，均使用测试专属的容器与数据卷，不连接线上数据库。若线上使用 MySQL/SQLite，还应在同类型数据库的隔离副本上验证启动与升级。
 
 ### 1. 下载配置与准备密钥
 

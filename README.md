@@ -256,7 +256,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 **Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** For Alipay testing, use the [test Compose file](docker-compose.alipay.test.yml) and [Alipay guide](ALIPAY.md).
 
-The repository's [Compose configuration](./docker-compose.yml) starts **New API + PostgreSQL + Redis** by default. It also contains examples for MySQL and a separate ClickHouse log database.
+The repository's [Compose configuration](./docker-compose.yml) starts **New API + PostgreSQL + Redis** by default. It also contains examples for MySQL and a separate ClickHouse log database. The standalone Alipay test Compose also includes isolated PostgreSQL and Redis services. The production Alipay overlay only adds payment configuration and must be merged with your existing Compose project.
 
 ```bash
 git clone https://github.com/HeartEase1/new-utopia-api.git

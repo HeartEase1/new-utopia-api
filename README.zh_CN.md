@@ -250,7 +250,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 **已有官方版本正在运行？先看[生产环境切换教程](MIGRATION.md)。以下 clone 和初始化步骤只用于新建实例；现有站点应在原 Compose 目录中修改镜像。** 当面付测试部署请使用[专用测试配置](docker-compose.alipay.test.yml)，并按[支付宝说明](ALIPAY.md)配置密钥与回调。
 
-仓库的 [Compose 配置](./docker-compose.yml) 默认启动 **New API + PostgreSQL + Redis**，并提供 MySQL 和独立 ClickHouse 日志库的配置示例。
+仓库的 [Compose 配置](./docker-compose.yml) 默认启动 **New API + PostgreSQL + Redis**，并提供 MySQL 和独立 ClickHouse 日志库的配置示例。支付宝独立测试配置也自带隔离的 **PostgreSQL + Redis**；现有生产站点的支付宝覆盖示例只负责增加支付配置，因此按说明合并到原 Compose，不单独启动数据库。
 
 ```bash
 git clone https://github.com/HeartEase1/new-utopia-api.git
