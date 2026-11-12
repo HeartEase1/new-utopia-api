@@ -30,7 +30,7 @@ docker compose logs --tail=100 new-api
 
 若 `.env` 中 `UTOPIA_IMAGE` 以前固定了 `@sha256:...`，先改回 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`，并确认最终 `image` 使用该标签。服务名和自定义 Compose 参数按原项目保留。
 
-标签随本仓库成功构建更新，但不会自动替换运行中的容器。官方更新需先合并到二开版本并发布镜像；锁定具体版本仅为可选方式。
+标签随本仓库成功构建更新，但不会自动替换运行中的容器。官方更新需先合并到二开版本并发布镜像。
 
 ---
 
@@ -253,7 +253,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 仓库的 [Compose 配置](./docker-compose.yml) 默认启动 **New API + PostgreSQL + Redis**，并提供 MySQL 和独立 ClickHouse 日志库的配置示例。
 
 ```bash
-git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+git clone https://github.com/HeartEase1/new-utopia-api.git
 cd new-utopia-api
 ```
 
@@ -289,7 +289,7 @@ docker compose logs -f new-api
 
 正式部署时使用 HTTPS，并配置反向代理支持流式响应与 WebSocket 升级。持久化并备份数据库和挂载数据。多节点必须共用主数据库和鉴权密钥；独立 Redis 或内存限流器会按节点分别计数。不同拓扑下的会话传播行为见鉴权文档。
 
-默认使用 `rc49-alipay` 标签，随本仓库成功构建更新。更新前先备份，在原 Compose 目录执行 `docker compose pull new-api`，再执行 `docker compose up -d --no-deps new-api`，无需每次修改镜像地址。提交标签或 digest 锁定仅作为可选方式。现有官方站点先按[切换与回退教程](MIGRATION.md)操作。
+默认使用 `rc49-alipay` 标签，随本仓库成功构建更新。更新前先备份，在原 Compose 目录执行 `docker compose pull new-api`，再执行 `docker compose up -d --no-deps new-api`，无需每次修改镜像地址。现有官方站点先按[切换与回退教程](MIGRATION.md)操作。
 
 <a id="development"></a>
 

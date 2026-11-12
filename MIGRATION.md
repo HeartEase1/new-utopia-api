@@ -46,7 +46,7 @@ gzip -t "$backup_dir/old-image.tar.gz"
 
 额外 Compose 文件、`env_file`、密钥文件、上传文件和其他挂载数据也要备份。`compose.resolved.yml` 可能包含凭据，只保存在服务器受限目录，不上传仓库或公开日志。提前确认磁盘空间能容纳镜像及数据库备份。
 
-## 3. 选择二开镜像（默认无需固定 digest）
+## 3. 使用默认二开镜像
 
 默认镜像地址：
 
@@ -67,23 +67,6 @@ docker pull ghcr.io/heartease1/new-utopia-api:rc49-alipay
 ```
 
 `rc49-alipay` 始终指向本分支最新成功发布的镜像，发布本身不会更新正在运行的容器。如果测试结束后标签已变化，生产拉取的可能是更新版本，应重新确认验收。
-
-### 可选：需要精确锁定时
-
-在测试服务器获取实际运行的镜像 digest（使用测试实例自己的 Compose 参数）：
-
-```bash
-docker image inspect "$(docker inspect --format '{{.Image}}' "$(docker compose ps -q new-api)")" \
-  --format '{{range .RepoDigests}}{{println .}}{{end}}'
-```
-
-只有需要精确复用该版本时，才在生产原 `.env` 中将 `UTOPIA_IMAGE` 改为：
-
-```dotenv
-UTOPIA_IMAGE=ghcr.io/heartease1/new-utopia-api@sha256:填写完整的测试镜像摘要
-```
-
-替换占位文字为实际 digest，也可从[成功构建的 Summary](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml)获取地址。锁定后 `pull` 不会自动升级到新版本；日后想恢复便捷更新，将 `UTOPIA_IMAGE` 改回默认标签即可。
 
 ## 4. 维护窗口：停写并备份数据库
 
@@ -157,7 +140,7 @@ dc ps
 dc logs --tail=100 new-api
 ```
 
-`config --images` 中应用应为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`（或你主动锁定的地址），数据库和 Redis 镜像保持原样。`--no-deps` 只替换应用，不升级数据库或 Redis。不要执行 `down -v`，不要用仓库的新建实例 Compose 替换原文件。
+`config --images` 中应用应为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`，数据库和 Redis 镜像保持原样。`--no-deps` 只替换应用，不升级数据库或 Redis。不要执行 `down -v`，不要用仓库的新建实例 Compose 替换原文件。
 
 重新获取新容器 ID，检查实际镜像和状态接口：
 
@@ -243,6 +226,6 @@ dc logs --tail=100 new-api
 | Compose | 使用 `docker-compose.alipay.test.yml` | 编辑原生产 Compose |
 | 数据库 | 独立库或隔离副本 | 原生产数据库 |
 | 管理员 | 初始化测试管理员 | 原管理员，不重新初始化 |
-| 镜像 | 默认 `rc49-alipay` | 默认 `rc49-alipay`；精确复用版本时可选锁定 |
+| 镜像 | 默认 `rc49-alipay` | 默认 `rc49-alipay` |
 | 回调 | 测试域名 | 正式域名 |
 | 数据 | 保留在测试环境 | 不被测试数据覆盖 |

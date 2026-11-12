@@ -200,7 +200,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 La [configuration Compose](./docker-compose.yml) du dépôt démarre **New API + PostgreSQL + Redis** par défaut. Elle contient aussi des exemples pour MySQL et une base de journaux ClickHouse distincte.
 
 ```bash
-git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+git clone https://github.com/HeartEase1/new-utopia-api.git
 cd new-utopia-api
 ```
 
@@ -236,7 +236,7 @@ Consultez l'[exemple d'environnement](./.env.example), la [référence des varia
 
 En production, utilisez HTTPS et configurez le proxy inverse pour le streaming et WebSocket. Conservez et sauvegardez les bases et les données montées. Tous les nœuds doivent partager la base principale et les secrets d'authentification ; des Redis distincts ou des limiteurs en mémoire comptent les limites séparément par nœud. Le guide des sessions détaille la propagation selon la topologie.
 
-Le tag `rc49-alipay` suit les compilations réussies. Après sauvegarde, exécutez `docker compose pull new-api`, puis `docker compose up -d --no-deps new-api` dans le répertoire Compose existant. Le verrouillage par tag de commit ou digest reste facultatif. Pour une installation officielle existante, suivez le [guide de migration et de retour arrière](MIGRATION.md).
+Le tag `rc49-alipay` suit les compilations réussies. Après sauvegarde, exécutez `docker compose pull new-api`, puis `docker compose up -d --no-deps new-api` dans le répertoire Compose existant. Pour une installation officielle existante, suivez le [guide de migration et de retour arrière](MIGRATION.md).
 
 <a id="development"></a>
 

@@ -29,10 +29,9 @@
 
 ## GitHub 自动发布镜像
 
-向 `utopia/alipay-rc49` 推送后，[New Utopia Alipay checks](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml) 会先运行支付三数据库测试和前端检查，再原生构建 `linux/amd64`、`linux/arm64` 镜像，检查容器启动、状态接口和内嵌前端，最后发布到 GitHub Container Registry（GHCR）。服务器无需安装 Go、Bun 或自行编译，也不需要 Docker Hub 凭据。
+向本仓库默认分支推送后，[New Utopia Alipay checks](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml) 会先运行支付三数据库测试和前端检查，再原生构建 `linux/amd64`、`linux/arm64` 镜像，检查容器启动、状态接口和内嵌前端，最后发布到 GitHub Container Registry（GHCR）。服务器无需安装 Go、Bun 或自行编译，也不需要 Docker Hub 凭据。
 
 - 默认镜像：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`，测试和生产均可使用，随成功构建更新。
-- 可选锁定版本：提交标签 `ghcr.io/heartease1/new-utopia-api:sha-完整40位提交哈希`，或 digest `ghcr.io/heartease1/new-utopia-api@sha256:...`（成功流水线的 Summary 中可查）。默认无需填写 digest。
 
 必须等待工作流的 **Publish multi-architecture image** 成功，单独测试通过不代表镜像已经发布。本仓库的 GHCR 镜像已公开，可匿名拉取，无需 Docker Hub 账号。若服务器访问不了 `ghcr.io`，需先解决该服务器的网络访问；GitHub 镜像不会自动同步到国内镜像站。
 
@@ -45,7 +44,7 @@
 ```sh
 mkdir -p /opt/new-utopia-test/secrets
 cd /opt/new-utopia-test
-curl -fL https://raw.githubusercontent.com/HeartEase1/new-utopia-api/utopia/alipay-rc49/docker-compose.alipay.test.yml -o compose.yml
+curl -fL https://raw.githubusercontent.com/HeartEase1/new-utopia-api/HEAD/docker-compose.alipay.test.yml -o compose.yml
 chmod 700 secrets
 ```
 
@@ -93,13 +92,7 @@ docker compose up -d --no-deps new-api
 
 ### 3. 观察一天
 
-记录本次实际运行的镜像，便于之后核对版本；无需修改 `.env`：
-
-```sh
-docker image inspect "$(docker inspect --format '{{.Image}}' "$(docker compose ps -q new-api)")" --format '{{range .RepoDigests}}{{println .}}{{end}}'
-```
-
-继续使用默认 `rc49-alipay` 标签即可。新镜像发布不会自动替换正在运行的容器；测试期间不执行 `pull` 更新即可保持当前版本。若测试结束前标签已有新构建，生产拉取的可能是更新版本，需要重新确认验收；需要完全复用已验收版本时，可选用上面的 digest 锁定。
+继续使用默认 `rc49-alipay` 标签即可。新镜像发布不会自动替换正在运行的容器；测试期间不执行 `pull` 更新即可保持当前版本。若测试结束前标签已有新构建，生产拉取的可能是更新版本，需要重新确认验收。
 
 建议至少验证以下场景，并连续观察一天：
 

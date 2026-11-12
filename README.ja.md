@@ -200,7 +200,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 リポジトリの [Compose 設定](./docker-compose.yml) は、既定で **New API + PostgreSQL + Redis** を起動します。MySQL と独立した ClickHouse ログデータベースの設定例も含まれます。
 
 ```bash
-git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+git clone https://github.com/HeartEase1/new-utopia-api.git
 cd new-utopia-api
 ```
 
@@ -236,7 +236,7 @@ docker compose logs -f new-api
 
 本番環境では HTTPS を使い、リバースプロキシでストリーミングと WebSocket アップグレードを有効にします。データベースとマウントデータを永続化し、バックアップしてください。複数ノードはメインデータベースと認証シークレットを共有します。独立した Redis やメモリ内のレート制限はノードごとに計数します。構成別のセッション伝播については認証の説明を参照してください。
 
-既定の `rc49-alipay` タグは成功したビルドに更新されます。バックアップ後、既存の Compose ディレクトリで `docker compose pull new-api`、続いて `docker compose up -d --no-deps new-api` を実行すれば更新できます。コミットタグや digest の固定は任意です。公式版からの移行は[切り替え・ロールバック手順](MIGRATION.md)を参照してください。
+既定の `rc49-alipay` タグは成功したビルドに更新されます。バックアップ後、既存の Compose ディレクトリで `docker compose pull new-api`、続いて `docker compose up -d --no-deps new-api` を実行すれば更新できます。公式版からの移行は[切り替え・ロールバック手順](MIGRATION.md)を参照してください。
 
 <a id="development"></a>
 

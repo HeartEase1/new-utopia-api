@@ -199,7 +199,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 儲存庫的 [Compose 設定](./docker-compose.yml) 預設啟動 **New API + PostgreSQL + Redis**，並提供 MySQL 和獨立 ClickHouse 日誌資料庫的設定範例。
 
 ```bash
-git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+git clone https://github.com/HeartEase1/new-utopia-api.git
 cd new-utopia-api
 ```
 
@@ -235,7 +235,7 @@ docker compose logs -f new-api
 
 正式部署時使用 HTTPS，並設定反向代理支援串流回應與 WebSocket 升級。持久化並備份資料庫和掛載資料。多節點必須共用主資料庫和驗證金鑰；獨立 Redis 或記憶體限流器會按節點分別計數。不同拓撲下的工作階段傳播行為見驗證文件。
 
-預設使用 `rc49-alipay` 標籤，隨本儲存庫成功建置更新。更新前先備份，在原 Compose 目錄執行 `docker compose pull new-api`，再執行 `docker compose up -d --no-deps new-api`，無需每次修改映像地址。鎖定提交標籤或 digest 為可選方式。既有官方站點請先依照[切換與回退教學](MIGRATION.md)操作。
+預設使用 `rc49-alipay` 標籤，隨本儲存庫成功建置更新。更新前先備份，在原 Compose 目錄執行 `docker compose pull new-api`，再執行 `docker compose up -d --no-deps new-api`，無需每次修改映像地址。既有官方站點請先依照[切換與回退教學](MIGRATION.md)操作。
 
 <a id="development"></a>
 
