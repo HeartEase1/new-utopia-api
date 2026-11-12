@@ -1,3 +1,47 @@
+# 新乌托邦 · New API 支付宝当面付二开版
+
+基于官方 **New API `v1.0.0-rc.49`**，新增余额充值的电脑扫码、手机点击唤起支付宝、支付回调和查单补单。支持 Linux amd64 / arm64。
+
+## 镜像与部署入口
+
+**本仓库镜像：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`**。默认不固定 digest，GitHub 自动检查和镜像构建通过后更新该标签。
+
+| 你要做什么 | 使用说明 |
+| --- | --- |
+| 在独立服务器用 Docker Compose 测试一天 | [测试部署、密钥、HTTPS 回调和验收步骤](ALIPAY.md#在独立服务器用-docker-compose-测试) |
+| 把现有官方 rc.49 生产站切到二开版本 | [备份、修改原 Compose、切换、验证及回退教程](MIGRATION.md) |
+| 新建普通站点 | [下方 Docker Compose 部署章节](#deployment)；当面付还需按 [ALIPAY.md](ALIPAY.md) 配置 |
+
+## 已有官方站点：镜像怎么改
+
+在**原生产 Compose** 中只修改应用镜像，其他数据库、数据卷、端口和环境变量保留。下面仅是配置片段，不是完整文件：
+
+```yaml
+services:
+  new-api:
+    image: ghcr.io/heartease1/new-utopia-api:rc49-alipay
+```
+
+首次切换先按 [生产迁移教程](MIGRATION.md) 备份和验证。不要用测试数据库覆盖生产，不需要重新初始化管理员。
+
+## 以后如何更新
+
+备份后，在原 Compose 目录执行（服务名按实际调整）：
+
+```bash
+docker compose pull new-api
+docker compose up -d --no-deps new-api
+docker compose logs --tail=100 new-api
+```
+
+无需每次修改镜像地址。若 `.env` 中的 `UTOPIA_IMAGE` 以前填过 `@sha256:...`，先改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`，同时确认最终生效的 `image` 使用此标签。自定义 `-p`、`--env-file` 或多个 `-f` 参数需继续保留。
+
+新镜像发布不会自动替换运行中的容器；执行上述命令才会更新。官方 New API 的新版仍需先合并到本二开分支并发布镜像。锁定提交标签或 digest 仅为可选方式。
+
+---
+
+以下为 New API 上游项目介绍及详细使用说明，部署命令已适配本仓库。
+
 > **New Utopia fork**: Based on official New API `v1.0.0-rc.49`, with Alipay face-to-face wallet top-ups. [Test deployment and Alipay configuration](ALIPAY.md) · [Production migration from the official image](MIGRATION.md) (Chinese). Deployment commands below use this fork; upstream attribution is retained.
 >
 > GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
