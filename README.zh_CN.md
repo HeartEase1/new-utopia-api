@@ -1,4 +1,6 @@
-> **新乌托邦二开版**：基于官方 `v1.0.0-rc.49`，新增支付宝当面付余额充值。请先阅读 [Docker Compose 测试与上线说明](ALIPAY.md)。镜像：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`，仅在本仓库自动检查、镜像构建与启动检查通过后发布。下方保留上游项目说明。
+> **新乌托邦二开版**：基于官方 New API `v1.0.0-rc.49`，新增支付宝当面付余额充值。[测试部署与支付宝配置](ALIPAY.md) · [生产环境：官方镜像切换到二开镜像完整教程](MIGRATION.md)。下方部署命令均使用本仓库镜像，保留上游署名。
+>
+> GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
 
 <div align="center">
 
@@ -23,8 +25,8 @@
   --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
   </a><!--
-  --><a href="https://hub.docker.com/r/CalciumIon/new-api">
-    <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
+  --><a href="https://github.com/users/HeartEase1/packages/container/package/new-utopia-api">
+    <img src="https://img.shields.io/badge/docker-GHCR-blue" alt="docker">
   </a>
   <a href="https://atomgit.com/QuantumNous/new-api" target="_blank">
     <img alt="AtomGit G-Star" src="https://atomgit.com/QuantumNous/new-api/star/badge.svg"/>
@@ -174,7 +176,7 @@ docker run --name new-api -d --restart unless-stopped \
   -p 127.0.0.1:3000:3000 \
   -e TZ=Asia/Shanghai \
   -v "$(pwd)/data:/data" \
-  calciumion/new-api:latest
+  ghcr.io/heartease1/new-utopia-api:rc49-alipay
 ```
 
 打开 [http://localhost:3000](http://localhost:3000)，按初始化向导创建管理员账号。SQLite 数据库存放在挂载的 `data` 目录中，更换容器后仍会保留。
@@ -208,16 +210,19 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
+**已有官方版本正在运行？先看[生产环境切换教程](MIGRATION.md)。以下 clone 和初始化步骤只用于新建实例；现有站点应在原 Compose 目录中修改镜像。** 当面付测试部署请使用[专用测试配置](docker-compose.alipay.test.yml)，并按[支付宝说明](ALIPAY.md)配置密钥与回调。
+
 仓库的 [Compose 配置](./docker-compose.yml) 默认启动 **New API + PostgreSQL + Redis**，并提供 MySQL 和独立 ClickHouse 日志库的配置示例。
 
 ```bash
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
+git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+cd new-utopia-api
 ```
 
 启动前编辑 `docker-compose.yml`：同时替换数据库、Redis 服务及对应连接串中的示例密码，并设置固定的随机 `SESSION_SECRET`（可用 `openssl rand -hex 32` 生成）。通过 HTTPS 访问控制台时，设置 `SESSION_COOKIE_SECURE=true`，并在 `SESSION_COOKIE_TRUSTED_URL` 中填写控制台对外的精确 HTTPS Origin。
 
 ```bash
+docker compose pull new-api
 docker compose up -d
 docker compose logs -f new-api
 ```
@@ -246,7 +251,7 @@ docker compose logs -f new-api
 
 正式部署时使用 HTTPS，并配置反向代理支持流式响应与 WebSocket 升级。持久化并备份数据库和挂载数据。多节点必须共用主数据库和鉴权密钥；独立 Redis 或内存限流器会按节点分别计数。不同拓扑下的会话传播行为见鉴权文档。
 
-从[发布页](https://github.com/QuantumNous/new-api/releases)选择明确的镜像版本，阅读升级说明并先备份再升级。`latest` 会随发布构建变化；已有实例应按实际版本评估迁移与兼容性。
+从本仓库[成功构建的 Summary](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml) 获取并固定经过测试的镜像 digest。`rc49-alipay` 会随成功构建更新。现有生产环境请按[官方镜像切换与回退教程](MIGRATION.md)操作，保留生产数据库，上线使用独立环境验收过的同一份镜像。
 
 <a id="development"></a>
 

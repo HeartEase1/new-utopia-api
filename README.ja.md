@@ -1,3 +1,7 @@
+> **新ウートピア派生版**：公式 New API `v1.0.0-rc.49` を基に Alipay 対面決済を追加しています。[テスト環境と Alipay 設定](ALIPAY.md) · [本番環境の切り替え手順](MIGRATION.md)（中国語）。以下のコマンドは本フォークを使用し、上流の著作者表記は保持しています。
+>
+> GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
+
 <div align="center">
 
 ![new-api](/web/public/logo.png)
@@ -21,8 +25,8 @@
   --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
   </a><!--
-  --><a href="https://hub.docker.com/r/CalciumIon/new-api">
-    <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
+  --><a href="https://github.com/users/HeartEase1/packages/container/package/new-utopia-api">
+    <img src="https://img.shields.io/badge/docker-GHCR-blue" alt="docker">
   </a>
   <a href="https://atomgit.com/QuantumNous/new-api" target="_blank">
     <img alt="AtomGit G-Star" src="https://atomgit.com/QuantumNous/new-api/star/badge.svg"/>
@@ -157,7 +161,7 @@ docker run --name new-api -d --restart unless-stopped \
   -p 127.0.0.1:3000:3000 \
   -e TZ=Asia/Shanghai \
   -v "$(pwd)/data:/data" \
-  calciumion/new-api:latest
+  ghcr.io/heartease1/new-utopia-api:rc49-alipay
 ```
 
 [http://localhost:3000](http://localhost:3000) を開き、初期設定ウィザードで管理者アカウントを作成します。SQLite データベースはマウントした `data` ディレクトリに保存され、コンテナを置き換えても残ります。
@@ -191,16 +195,19 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
+> **新ウートピア派生版**：公式 New API `v1.0.0-rc.49` を基に Alipay 対面決済を追加しています。[テスト環境と Alipay 設定](ALIPAY.md) · [本番環境の切り替え手順](MIGRATION.md)（中国語）。以下のコマンドは本フォークを使用し、上流の著作者表記は保持しています。
+
 リポジトリの [Compose 設定](./docker-compose.yml) は、既定で **New API + PostgreSQL + Redis** を起動します。MySQL と独立した ClickHouse ログデータベースの設定例も含まれます。
 
 ```bash
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
+git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+cd new-utopia-api
 ```
 
 起動前に `docker-compose.yml` を編集し、データベースと Redis のサービスおよび接続文字列にあるサンプルパスワードを変更します。永続的に使うランダムな `SESSION_SECRET` も設定してください（`openssl rand -hex 32` で生成可能）。HTTPS の管理画面には `SESSION_COOKIE_SECURE=true` を設定し、公開 HTTPS オリジンを `SESSION_COOKIE_TRUSTED_URL` に正確に指定します。
 
 ```bash
+docker compose pull new-api
 docker compose up -d
 docker compose logs -f new-api
 ```
@@ -229,7 +236,7 @@ docker compose logs -f new-api
 
 本番環境では HTTPS を使い、リバースプロキシでストリーミングと WebSocket アップグレードを有効にします。データベースとマウントデータを永続化し、バックアップしてください。複数ノードはメインデータベースと認証シークレットを共有します。独立した Redis やメモリ内のレート制限はノードごとに計数します。構成別のセッション伝播については認証の説明を参照してください。
 
-[リリース一覧](https://github.com/QuantumNous/new-api/releases)からイメージのバージョンを固定し、更新内容を読んでバックアップしてからアップグレードしてください。`latest` は公開ビルドに応じて変わります。既存環境の移行と互換性は、利用中のバージョンに応じて確認してください。
+本フォークの[成功したビルドの Summary](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml)から検証済み digest を固定してください。`rc49-alipay` はビルド成功時に更新されます。[切り替え・ロールバック手順](MIGRATION.md)に従い、本番データベースを保持して同一のテスト済みイメージを使用してください。
 
 <a id="development"></a>
 

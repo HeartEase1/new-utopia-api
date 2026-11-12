@@ -1,3 +1,7 @@
+> **Fork New Utopia** : Basé sur New API officiel `v1.0.0-rc.49`, avec recharge du solde via Alipay face-à-face. [Test et configuration Alipay](ALIPAY.md) · [Migration en production](MIGRATION.md) (guides en chinois). Les commandes ci-dessous utilisent ce fork ; les attributions amont sont conservées.
+>
+> GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
+
 <div align="center">
 
 ![new-api](/web/public/logo.png)
@@ -21,8 +25,8 @@
   --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="version">
   </a><!--
-  --><a href="https://hub.docker.com/r/CalciumIon/new-api">
-    <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
+  --><a href="https://github.com/users/HeartEase1/packages/container/package/new-utopia-api">
+    <img src="https://img.shields.io/badge/docker-GHCR-blue" alt="docker">
   </a>
   <a href="https://atomgit.com/QuantumNous/new-api" target="_blank">
     <img alt="AtomGit G-Star" src="https://atomgit.com/QuantumNous/new-api/star/badge.svg"/>
@@ -157,7 +161,7 @@ docker run --name new-api -d --restart unless-stopped \
   -p 127.0.0.1:3000:3000 \
   -e TZ=Asia/Shanghai \
   -v "$(pwd)/data:/data" \
-  calciumion/new-api:latest
+  ghcr.io/heartease1/new-utopia-api:rc49-alipay
 ```
 
 Ouvrez [http://localhost:3000](http://localhost:3000) et suivez l'assistant pour créer le compte administrateur. Le répertoire `data` conserve la base SQLite lors du remplacement du conteneur.
@@ -191,16 +195,19 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
+> **Fork New Utopia** : Basé sur New API officiel `v1.0.0-rc.49`, avec recharge du solde via Alipay face-à-face. [Test et configuration Alipay](ALIPAY.md) · [Migration en production](MIGRATION.md) (guides en chinois). Les commandes ci-dessous utilisent ce fork ; les attributions amont sont conservées.
+
 La [configuration Compose](./docker-compose.yml) du dépôt démarre **New API + PostgreSQL + Redis** par défaut. Elle contient aussi des exemples pour MySQL et une base de journaux ClickHouse distincte.
 
 ```bash
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
+git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+cd new-utopia-api
 ```
 
 Avant de démarrer, modifiez `docker-compose.yml` : remplacez les mots de passe d'exemple de la base et de Redis dans les services et les chaînes de connexion, puis définissez un `SESSION_SECRET` aléatoire et persistant (générable avec `openssl rand -hex 32`). Pour une console HTTPS, définissez `SESSION_COOKIE_SECURE=true` et renseignez son origine HTTPS publique exacte dans `SESSION_COOKIE_TRUSTED_URL`.
 
 ```bash
+docker compose pull new-api
 docker compose up -d
 docker compose logs -f new-api
 ```
@@ -229,7 +236,7 @@ Consultez l'[exemple d'environnement](./.env.example), la [référence des varia
 
 En production, utilisez HTTPS et configurez le proxy inverse pour le streaming et WebSocket. Conservez et sauvegardez les bases et les données montées. Tous les nœuds doivent partager la base principale et les secrets d'authentification ; des Redis distincts ou des limiteurs en mémoire comptent les limites séparément par nœud. Le guide des sessions détaille la propagation selon la topologie.
 
-Choisissez une version précise d'image dans les [versions publiées](https://github.com/QuantumNous/new-api/releases), lisez ses notes et sauvegardez avant toute mise à niveau. Le tag `latest` évolue avec les publications ; évaluez les migrations et la compatibilité de votre installation.
+Fixez le digest testé indiqué dans le [résumé de compilation de ce fork](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml). Le tag `rc49-alipay` évolue après chaque compilation réussie. Suivez le [guide de migration et de retour arrière](MIGRATION.md), conservez la base de production et déployez exactement l’image testée.
 
 <a id="development"></a>
 

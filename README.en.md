@@ -1,3 +1,7 @@
+> **New Utopia fork**: Based on official New API `v1.0.0-rc.49`, with Alipay face-to-face wallet top-ups. [Test deployment and Alipay configuration](ALIPAY.md) · [Production migration from the official image](MIGRATION.md) (Chinese). Deployment commands below use this fork; upstream attribution is retained.
+>
+> GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
+
 <div align="center">
 
 ![new-api](/web/public/logo.png)
@@ -24,8 +28,8 @@
   <a href="https://github.com/users/Calcium-Ion/packages/container/package/new-api">
     <img src="https://img.shields.io/badge/docker-ghcr.io-blue" alt="docker">
   </a>
-  <a href="https://hub.docker.com/r/CalciumIon/new-api">
-    <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
+  <a href="https://github.com/users/HeartEase1/packages/container/package/new-utopia-api">
+    <img src="https://img.shields.io/badge/docker-GHCR-blue" alt="docker">
   </a>
   <a href="https://atomgit.com/QuantumNous/new-api" target="_blank">
     <img alt="AtomGit G-Star" src="https://atomgit.com/QuantumNous/new-api/star/badge.svg"/>
@@ -176,7 +180,7 @@ docker run --name new-api -d --restart unless-stopped \
   -p 127.0.0.1:3000:3000 \
   -e TZ=Asia/Shanghai \
   -v "$(pwd)/data:/data" \
-  calciumion/new-api:latest
+  ghcr.io/heartease1/new-utopia-api:rc49-alipay
 ```
 
 Open [http://localhost:3000](http://localhost:3000) and complete the setup wizard to create the administrator account. The `data` directory persists the SQLite database across container replacements.
@@ -210,16 +214,19 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
+**Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** For Alipay testing, use the [test Compose file](docker-compose.alipay.test.yml) and [Alipay guide](ALIPAY.md).
+
 The repository's [Compose configuration](./docker-compose.yml) starts **New API + PostgreSQL + Redis** by default. It also contains examples for MySQL and a separate ClickHouse log database.
 
 ```bash
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
+git clone --branch utopia/alipay-rc49 --single-branch https://github.com/HeartEase1/new-utopia-api.git
+cd new-utopia-api
 ```
 
 Before starting, edit `docker-compose.yml`: replace the database and Redis example passwords in both the services and connection strings, and set a persistent random `SESSION_SECRET` (generate one with `openssl rand -hex 32`). For an HTTPS console, configure `SESSION_COOKIE_SECURE=true` and `SESSION_COOKIE_TRUSTED_URL` with its exact public HTTPS origin.
 
 ```bash
+docker compose pull new-api
 docker compose up -d
 docker compose logs -f new-api
 ```
@@ -248,7 +255,7 @@ See the [environment example](./.env.example), [environment reference](https://d
 
 For production, put the console behind HTTPS and configure your reverse proxy for streaming and WebSocket upgrades. Persist and back up the database and mounted data. Multi-node deployments must share the main database and authentication secrets; separate Redis instances or in-memory rate limiters count limits independently per node. The session guide describes propagation behavior for each topology.
 
-Pin an image version from [Releases](https://github.com/QuantumNous/new-api/releases), review its upgrade notes, and back up before upgrading. The `latest` tag follows published builds and can change; migrations and compatibility must be assessed for your existing installation.
+Use a tested image digest from this fork’s [successful build summary](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml). `rc49-alipay` moves after successful builds. Follow the [production migration and rollback guide](MIGRATION.md), keep the production database, and deploy the exact image tested in isolation.
 
 <a id="development"></a>
 

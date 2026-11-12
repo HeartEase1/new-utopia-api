@@ -1,14 +1,18 @@
 # New-API Docker Compose Configuration
+# New Utopia fork: new installations only; existing production sites follow MIGRATION.md.
+# Pin UTOPIA_IMAGE to your tested ghcr.io digest before deploying to production.
+# Alipay credentials and callbacks: see ALIPAY.md.
 # 
 # Quick Start:
-#   1. docker-compose up -d
-#   2. Access at http://localhost:3000
+#   1. docker compose pull new-api
+#   2. docker compose up -d
+#   3. Access at http://localhost:3000
 #
 # Using MySQL instead of PostgreSQL:
-#   1. Comment out the postgres service and SQL_DSN line 15
-#   2. Uncomment the mysql service and SQL_DSN line 16
-#   3. Uncomment mysql in depends_on (line 28)
-#   4. Uncomment mysql_data in volumes section (line 64)
+#   1. Comment out the postgres service and PostgreSQL SQL_DSN
+#   2. Uncomment the mysql service and MySQL SQL_DSN
+#   3. Replace postgres with mysql in depends_on
+#   4. Uncomment mysql_data in the top-level volumes section
 #
 # ⚠️  IMPORTANT: Change all default passwords before deploying to production!
 
@@ -16,7 +20,7 @@ version: '3.4' # For compatibility with older Docker versions
 
 services:
   new-api:
-    image: calciumion/new-api:latest
+    image: "${UTOPIA_IMAGE:-ghcr.io/heartease1/new-utopia-api:rc49-alipay}"
     container_name: new-api
     restart: always
     command: --log-dir /app/logs

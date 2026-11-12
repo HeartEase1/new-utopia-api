@@ -5,6 +5,8 @@
 不调用电脑网站/手机网站支付接口，不包含支付宝直购订阅或退款。
 保留 New API 原始许可证、署名和项目标识。
 
+**已有官方 rc.49 生产站点？直接查看[官方镜像切换到二开镜像完整教程](MIGRATION.md)**，包含 PostgreSQL/MySQL/SQLite 备份、原 Compose 修改前后对照、分阶段切换、验收和回退命令。
+
 ## 配置
 
 支付宝应用必须已开通当面付，并使用 **RSA2 公钥模式**。本版不支持证书模式。
@@ -33,7 +35,7 @@
 - 提交标签：`ghcr.io/heartease1/new-utopia-api:sha-完整40位提交哈希`。
 - 正式部署使用 digest：`ghcr.io/heartease1/new-utopia-api@sha256:...`，从成功流水线的 Summary 复制。它唯一确定镜像内容。
 
-必须等待工作流的 **Publish multi-architecture image** 成功，单独测试通过不代表镜像已经发布。首次发布的 GHCR 包可能默认为私有，仓库所有者需在包的 **Package settings → Change visibility → Public** 设置公开，公开后服务器可匿名拉取。若服务器访问不了 `ghcr.io`，需先解决该服务器的网络访问；GitHub 镜像不会自动同步到国内镜像站。
+必须等待工作流的 **Publish multi-architecture image** 成功，单独测试通过不代表镜像已经发布。本仓库的 GHCR 镜像已公开，可匿名拉取，无需 Docker Hub 账号。若服务器访问不了 `ghcr.io`，需先解决该服务器的网络访问；GitHub 镜像不会自动同步到国内镜像站。
 
 ## 在独立服务器用 Docker Compose 测试
 
@@ -112,6 +114,8 @@ docker image inspect "$(docker inspect --format '{{.Image}}' "$(docker compose p
 这是一份人工验收流程，不表示上述真实商户与手机测试已完成。测试中产生的真实支付宝交易仍是真实收款，退款需在支付宝侧处理，本版没有站内退款接口。
 
 ## 测试通过后切换线上
+
+逐步命令、备份示例和回退操作见 **[生产环境切换教程](MIGRATION.md)**。以下是流程概览。
 
 **上线同步的是测试通过的镜像和必要配置，不是测试数据库。不要把测试用户、订单或余额覆盖到生产。**
 
