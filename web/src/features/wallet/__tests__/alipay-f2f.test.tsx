@@ -17,11 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createInstance } from 'i18next'
+import { useState } from 'react'
 import { I18nextProvider, initReactI18next } from 'react-i18next'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
@@ -31,15 +39,17 @@ import { getMinTopupAmount } from '../lib/payment'
 import type { TopupInfo } from '../types'
 
 const i18n = createInstance()
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 beforeEach(async () => {
-  await i18n
-    .use(initReactI18next)
-    .init({
-      lng: 'en',
-      fallbackLng: false,
-      resources: { en: { translation: {} } },
-      interpolation: { escapeValue: false },
-    })
+  await i18n.use(initReactI18next).init({
+    lng: 'en',
+    fallbackLng: false,
+    resources: { en: { translation: {} } },
+    interpolation: { escapeValue: false },
+  })
 })
 
 function showDialog(expiresAt = Date.now() / 1000 + 900) {
@@ -48,19 +58,29 @@ function showDialog(expiresAt = Date.now() / 1000 + 900) {
   })
   const onPaid = vi.fn()
   const onClose = vi.fn()
+  function Payment() {
+    const [open, setOpen] = useState(true)
+    if (!open) return null
+    return (
+      <AlipayF2FDialog
+        order={{
+          trade_no: 'UTtest',
+          qr_code: 'https://qr.alipay.com/example',
+          amount: '10.01',
+          expires_at: expiresAt,
+        }}
+        onPaid={onPaid}
+        onClose={() => {
+          onClose()
+          setOpen(false)
+        }}
+      />
+    )
+  }
   render(
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={client}>
-        <AlipayF2FDialog
-          order={{
-            trade_no: 'UTtest',
-            qr_code: 'https://qr.alipay.com/example',
-            amount: '10.01',
-            expires_at: expiresAt,
-          }}
-          onPaid={onPaid}
-          onClose={onClose}
-        />
+        <Payment />
       </QueryClientProvider>
     </I18nextProvider>
   )
@@ -83,6 +103,89 @@ it('keeps a pending payment uncredited and displays a QR code and app launch but
   )
   expect(screen.getByText('CNY 10.01')).toBeVisible()
   expect(onPaid).not.toHaveBeenCalled()
+})
+
+it('polls every five seconds for two minutes then only queries when requested', async () => {
+  vi.useFakeTimers()
+  const post = vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { status: 'pending' } },
+  })
+  showDialog()
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(post).toHaveBeenCalledTimes(1)
+  await act(() => vi.advanceTimersByTimeAsync(5000))
+  expect(post).toHaveBeenCalledTimes(2)
+  for (let i = 0; i < 22; i++) {
+    await act(() => vi.advanceTimersByTimeAsync(5000))
+  }
+  expect(post).toHaveBeenCalledTimes(24)
+  await act(() => vi.advanceTimersByTimeAsync(5000))
+  const stoppedAt = post.mock.calls.length
+  await act(() => vi.advanceTimersByTimeAsync(180000))
+  expect(post).toHaveBeenCalledTimes(stoppedAt)
+  expect(
+    screen.getByText(
+      'Automatic checking has stopped. After paying, click Check payment status.'
+    )
+  ).toBeVisible()
+  expect(
+    screen.getByRole('img', { name: 'Alipay payment QR code' })
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Check payment status' }))
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(post).toHaveBeenCalledTimes(stoppedAt + 1)
+  await act(() => vi.advanceTimersByTimeAsync(15000))
+  expect(post).toHaveBeenCalledTimes(stoppedAt + 1)
+})
+
+it('keeps the payment dialog open after outside clicks and Escape until Cancel is pressed', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { status: 'pending' } },
+  })
+  const { onClose } = showDialog()
+  const user = userEvent.setup()
+  const backdrop = document.querySelector<HTMLElement>(
+    '[data-slot="dialog-overlay"]'
+  )
+  expect(backdrop).not.toBeNull()
+  if (!backdrop) throw new Error('Missing dialog backdrop')
+  await user.click(backdrop)
+  expect(onClose).not.toHaveBeenCalled()
+  await user.keyboard('{Escape}')
+  expect(onClose).not.toHaveBeenCalled()
+  expect(screen.getByRole('dialog')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Close' })
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(onClose).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('stops automatic queries when Cancel closes the dialog', async () => {
+  vi.useFakeTimers()
+  const post = vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { status: 'pending' } },
+  })
+  const { onClose } = showDialog()
+  await act(() => vi.advanceTimersByTimeAsync(5000))
+  const beforeClose = post.mock.calls.length
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(onClose).toHaveBeenCalledTimes(1)
+  await act(() => vi.advanceTimersByTimeAsync(180000))
+  expect(post).toHaveBeenCalledTimes(beforeClose)
+})
+
+it('aborts an in-flight status request when Cancel closes the dialog', async () => {
+  let signal: AbortSignal | undefined
+  vi.spyOn(api, 'post').mockImplementation((_url, _body, config) => {
+    signal = config?.signal as AbortSignal | undefined
+    return new Promise(() => {})
+  })
+  showDialog()
+  await waitFor(() => expect(signal).toBeDefined())
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(signal?.aborted).toBe(true)
 })
 
 it('shows a retry action after a failed query and refreshes the balance only after server-confirmed payment', async () => {

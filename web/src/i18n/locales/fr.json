@@ -779,6 +779,7 @@
     "Auto-fill when one field exists and another is missing": "Remplissage automatique si un champ existe et l'autre est manquant",
     "Auto-refreshing every {{seconds}}s": "Actualisation automatique toutes les {{seconds}} s",
     "Auto-retry status codes": "Codes de statut de nouvelle tentative auto",
+    "Automatic checking has stopped. After paying, click Check payment status.": "La vérification automatique est arrêtée. Après le paiement, cliquez sur Vérifier le paiement.",
     "Automatic from system website address": "Automatique depuis l’adresse du site système",
     "Automatic selection": "Sélection auto",
     "Automatically disable channel on repeated failures": "Désactiver automatiquement le canal en cas d'échecs répétés",

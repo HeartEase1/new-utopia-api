@@ -63,10 +63,15 @@ export async function requestAlipayF2F(
   return res.data.data
 }
 
-export async function queryAlipayF2FOrder(tradeNo: string): Promise<string> {
-  const res = await api.post('/api/user/alipay-f2f/query', {
-    trade_no: tradeNo,
-  })
+export async function queryAlipayF2FOrder(
+  tradeNo: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const res = await api.post(
+    '/api/user/alipay-f2f/query',
+    { trade_no: tradeNo },
+    { signal }
+  )
   if (!res.data.success) {
     throw createServerError(res.data, 'Failed to query payment status')
   }

@@ -779,6 +779,7 @@
     "Auto-fill when one field exists and another is missing": "Tự động điền khi một trường có giá trị và trường khác thiếu",
     "Auto-refreshing every {{seconds}}s": "Tự động làm mới mỗi {{seconds}} giây",
     "Auto-retry status codes": "Mã trạng thái tự thử lại",
+    "Automatic checking has stopped. After paying, click Check payment status.": "Đã dừng kiểm tra tự động. Sau khi thanh toán, hãy nhấn Kiểm tra trạng thái thanh toán.",
     "Automatic from system website address": "Tự động từ địa chỉ trang web hệ thống",
     "Automatic selection": "Chọn tự động",
     "Automatically disable channel on repeated failures": "Tự động vô hiệu hóa kênh khi xảy ra lỗi lặp lại",

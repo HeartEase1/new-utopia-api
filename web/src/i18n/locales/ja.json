@@ -779,6 +779,7 @@
     "Auto-fill when one field exists and another is missing": "一方のフィールドがあり他方が欠けている場合に自動補完",
     "Auto-refreshing every {{seconds}}s": "{{seconds}} 秒ごとに自動更新",
     "Auto-retry status codes": "自動リトライするステータスコード",
+    "Automatic checking has stopped. After paying, click Check payment status.": "自動確認を停止しました。お支払い後に「支払い状況を確認」を押してください。",
     "Automatic from system website address": "システムのサイトアドレスから自動取得",
     "Automatic selection": "自動選択",
     "Automatically disable channel on repeated failures": "繰り返しの失敗でチャネルを自動的に無効にする",

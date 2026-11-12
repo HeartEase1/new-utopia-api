@@ -779,6 +779,7 @@
     "Auto-fill when one field exists and another is missing": "在一个字段有值、另一个缺失时自动补齐",
     "Auto-refreshing every {{seconds}}s": "每 {{seconds}} 秒自动刷新",
     "Auto-retry status codes": "自动重试状态码",
+    "Automatic checking has stopped. After paying, click Check payment status.": "自动查询已停止。付款后，请点击“查询支付状态”。",
     "Automatic from system website address": "从系统网站地址自动获取",
     "Automatic selection": "自动选择",
     "Automatically disable channel on repeated failures": "重复失败时自动禁用渠道",

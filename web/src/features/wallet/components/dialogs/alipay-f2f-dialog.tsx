@@ -38,15 +38,22 @@ interface AlipayF2FDialogProps {
 // component adds only payment-specific QR rendering and server status polling.
 export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
   const { t } = useTranslation()
+  const [autoCheckEndsAt] = useState(() => Date.now() + 2 * 60 * 1000)
+  const [autoCheckStopped, setAutoCheckStopped] = useState(false)
   const [expired, setExpired] = useState(
     () => props.order.expires_at * 1000 <= Date.now()
   )
   const query = useQuery({
     queryKey: ['alipay-f2f-order', props.order.trade_no],
-    queryFn: () => queryAlipayF2FOrder(props.order.trade_no),
+    queryFn: ({ signal }) => queryAlipayF2FOrder(props.order.trade_no, signal),
+    enabled: !expired && !autoCheckStopped,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     refetchInterval: (q) => {
       if (
         expired ||
+        autoCheckStopped ||
+        Date.now() >= autoCheckEndsAt ||
         q.state.error ||
         q.state.data === 'success' ||
         q.state.data === 'expired'
@@ -70,6 +77,14 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
 
   useEffect(() => {
     const timer = window.setTimeout(
+      () => setAutoCheckStopped(true),
+      Math.max(0, autoCheckEndsAt - Date.now())
+    )
+    return () => window.clearTimeout(timer)
+  }, [autoCheckEndsAt])
+
+  useEffect(() => {
+    const timer = window.setTimeout(
       () => setExpired(true),
       Math.max(0, props.order.expires_at * 1000 - Date.now())
     )
@@ -79,15 +94,15 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
   return (
     <Dialog
       open
-      onOpenChange={(open) => {
-        if (!open) props.onClose()
-      }}
+      disablePointerDismissal
+      showCloseButton={false}
+      onOpenChange={(_, details) => details.cancel()}
       title={t('Alipay payment')}
       description={t('Scan with Alipay or open the Alipay app on your phone.')}
       contentClassName='sm:max-w-md'
       footer={
         <Button variant='outline' onClick={props.onClose}>
-          {t('Close')}
+          {t('Cancel')}
         </Button>
       }
     >
@@ -126,6 +141,13 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
               <p>
                 {t(
                   'This QR code has expired. If you already paid, check the payment status.'
+                )}
+              </p>
+            )}
+            {autoCheckStopped && !expired && !closed && (
+              <p className='text-muted-foreground text-center text-sm'>
+                {t(
+                  'Automatic checking has stopped. After paying, click Check payment status.'
                 )}
               </p>
             )}
