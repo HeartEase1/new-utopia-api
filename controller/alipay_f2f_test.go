@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
@@ -114,6 +115,7 @@ func TestAlipayF2F(t *testing.T) {
 		require.NoError(t, db.Table("alipay_fresh_topups").AutoMigrate(&model.TopUp{}))
 	}
 	require.True(t, db.Migrator().HasColumn("alipay_fresh_topups", "quota_snapshot"))
+	require.True(t, db.Migrator().HasColumn("alipay_fresh_topups", "expires_at"))
 	require.NoError(t, db.Table("top_ups").AutoMigrate(&alipayRC49TopUp{}))
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.Option{}))
 	user := model.User{Username: "utopia_alipay_test", Status: common.UserStatusEnabled, Group: "default"}
@@ -129,6 +131,8 @@ func TestAlipayF2F(t *testing.T) {
 	assert.Equal(t, legacy.Amount, order.Amount)
 	assert.Equal(t, legacy.Money, order.Money)
 	assert.Zero(t, order.QuotaSnapshot)
+	assert.Zero(t, order.ExpiresAt)
+	assert.True(t, db.Migrator().HasColumn(&model.TopUp{}, "expires_at"))
 	assert.True(t, db.Migrator().HasIndex(&model.TopUp{}, "idx_top_ups_user_id"))
 	duplicate := order
 	duplicate.Id = 0
@@ -151,12 +155,16 @@ func TestAlipayF2F(t *testing.T) {
 	// The only mocked boundary is Alipay's network endpoint, including real RSA2
 	// response signing and the SDK's response verification.
 	queryAmount, queryStatus, queryOrder := "10.01", "TRADE_SUCCESS", ""
+	closeResult, closeCalls := "ACQ.TRADE_NOT_EXIST", 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
 		var biz struct {
-			OutTradeNo  string `json:"out_trade_no"`
-			TotalAmount string `json:"total_amount"`
-			SellerID    string `json:"seller_id"`
+			OutTradeNo           string `json:"out_trade_no"`
+			TotalAmount          string `json:"total_amount"`
+			SellerID             string `json:"seller_id"`
+			TimeoutExpress       string `json:"timeout_express"`
+			TimeExpire           string `json:"time_expire"`
+			QRCodeTimeoutExpress string `json:"qr_code_timeout_express"`
 		}
 		require.NoError(t, common.UnmarshalJsonStr(r.Form.Get("biz_content"), &biz))
 		responseName := "alipay_trade_query_response"
@@ -165,6 +173,17 @@ func TestAlipayF2F(t *testing.T) {
 			tradeNo = queryOrder
 		}
 		body := map[string]any{"code": "10000", "trade_no": "ALI202601", "out_trade_no": tradeNo, "total_amount": queryAmount, "trade_status": queryStatus}
+		if queryStatus == "NOT_EXIST" {
+			body = map[string]any{"code": "40004", "sub_code": "ACQ.TRADE_NOT_EXIST"}
+		}
+		if r.Form.Get("method") == "alipay.trade.close" {
+			closeCalls++
+			responseName = "alipay_trade_close_response"
+			body = map[string]any{"code": "40004", "sub_code": closeResult}
+			if closeResult == "CLOSED" {
+				body = map[string]any{"code": "10000", "out_trade_no": tradeNo, "trade_no": "ALI202601"}
+			}
+		}
 		if r.Form.Get("method") == "alipay.trade.precreate" {
 			responseName = "alipay_trade_precreate_response"
 			var saved model.TopUp
@@ -172,6 +191,10 @@ func TestAlipayF2F(t *testing.T) {
 			assert.Equal(t, "pending", saved.Status)
 			assert.Equal(t, "10.01", biz.TotalAmount)
 			assert.Equal(t, "seller-test", biz.SellerID)
+			assert.Equal(t, "5m", biz.TimeoutExpress)
+			assert.Equal(t, "5m", biz.QRCodeTimeoutExpress)
+			assert.Equal(t, saved.CreateTime+300, saved.ExpiresAt)
+			assert.Equal(t, time.Unix(saved.ExpiresAt, 0).In(time.FixedZone("CST", 8*60*60)).Format("2006-01-02 15:04:05"), biz.TimeExpire)
 			body = map[string]any{"code": "10000", "out_trade_no": biz.OutTradeNo, "qr_code": "https://qr.alipay.com/test-order"}
 		}
 		payload, err := common.Marshal(body)
@@ -195,6 +218,7 @@ func TestAlipayF2F(t *testing.T) {
 	router.POST("/notify", AlipayF2FNotify)
 	router.POST("/query", func(c *gin.Context) { c.Set("id", user.Id); QueryAlipayF2FOrder(c) })
 	router.POST("/pay", func(c *gin.Context) { c.Set("id", user.Id); RequestAlipayF2F(c) })
+	router.POST("/cancel", func(c *gin.Context) { c.Set("id", user.Id); CancelAlipayF2FOrder(c) })
 
 	request := func(path, body, contentType string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
@@ -300,6 +324,42 @@ func TestAlipayF2F(t *testing.T) {
 		assert.Equal(t, "success", request("/notify", values.Encode(), "application/x-www-form-urlencoded").Body.String())
 		assert.Zero(t, quota())
 	})
+	t.Run("closed or never-paid orders expire and a late payment still credits once", func(t *testing.T) {
+		reset()
+		defer func() { queryStatus = "TRADE_SUCCESS" }()
+		body := `{"trade_no":"UTexisting"}`
+		createdAt := func(unix int64) {
+			require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("create_time", unix).Error)
+		}
+		defer createdAt(0)
+		// An unscanned QR code has no Alipay trade yet and can still be paid.
+		queryStatus = "NOT_EXIST"
+		createdAt(time.Now().Unix())
+		assert.Contains(t, request("/query", body, "application/json").Body.String(), `"status":"pending"`)
+		assert.Equal(t, "pending", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		createdAt(time.Now().Add(-4 * time.Hour).Unix())
+		assert.Contains(t, request("/query", body, "application/json").Body.String(), `"status":"expired"`)
+		assert.Equal(t, "expired", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		reset()
+		createdAt(time.Now().Unix())
+		queryStatus = "TRADE_CLOSED"
+		assert.Contains(t, request("/query", body, "application/json").Body.String(), `"status":"expired"`)
+		assert.Equal(t, "expired", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		assert.Zero(t, quota())
+		reset()
+		closed := form()
+		closed.Set("trade_status", "TRADE_CLOSED")
+		sign(closed)
+		assert.Equal(t, "success", request("/notify", closed.Encode(), "application/x-www-form-urlencoded").Body.String())
+		assert.Equal(t, "expired", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		paid := form()
+		sign(paid)
+		for range 2 {
+			assert.Equal(t, "success", request("/notify", paid.Encode(), "application/x-www-form-urlencoded").Body.String())
+		}
+		assert.Equal(t, 1000000, quota())
+		assert.Equal(t, "success", model.GetTopUpByTradeNo(order.TradeNo).Status)
+	})
 	t.Run("query recovers missed notification and checks ownership amount and order", func(t *testing.T) {
 		reset()
 		body := `{"trade_no":"UTexisting"}`
@@ -320,6 +380,77 @@ func TestAlipayF2F(t *testing.T) {
 		sign(values)
 		assert.Equal(t, "success", request("/notify", values.Encode(), "application/x-www-form-urlencoded").Body.String())
 		assert.Equal(t, 1000000, quota())
+	})
+	t.Run("cancel checks ownership and closes an unpaid trade without credit", func(t *testing.T) {
+		reset()
+		defer func() { closeResult = "ACQ.TRADE_NOT_EXIST"; queryOrder = "" }()
+		closeResult = "CLOSED"
+		body := `{"trade_no":"UTexisting"}`
+		before := closeCalls
+		require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("user_id", user.Id+1).Error)
+		assert.Contains(t, request("/cancel", body, "application/json").Body.String(), `"success":false`)
+		assert.Equal(t, before, closeCalls)
+		reset()
+		queryOrder = "another-trade"
+		assert.Contains(t, request("/cancel", body, "application/json").Body.String(), `"success":false`)
+		assert.Equal(t, "pending", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		queryOrder = ""
+		for range 2 {
+			assert.Contains(t, request("/cancel", body, "application/json").Body.String(), `"status":"expired"`)
+		}
+		assert.Zero(t, quota())
+		paid := form()
+		sign(paid)
+		for range 2 {
+			assert.Equal(t, "success", request("/notify", paid.Encode(), "application/x-www-form-urlencoded").Body.String())
+		}
+		assert.Equal(t, 1000000, quota(), "a delayed authenticated payment must still settle exactly once")
+	})
+	t.Run("payment wins cancellation and gateway failure never marks unpaid trade closed", func(t *testing.T) {
+		reset()
+		defer func() { closeResult = "ACQ.TRADE_NOT_EXIST"; queryStatus = "TRADE_SUCCESS" }()
+		closeResult, queryStatus = "ACQ.TRADE_STATUS_ERROR", "TRADE_SUCCESS"
+		body := `{"trade_no":"UTexisting"}`
+		for range 2 {
+			assert.Contains(t, request("/cancel", body, "application/json").Body.String(), `"status":"success"`)
+		}
+		assert.Equal(t, 1000000, quota())
+		reset()
+		queryStatus = "WAIT_BUYER_PAY"
+		assert.Contains(t, request("/cancel", body, "application/json").Body.String(), `"success":false`)
+		assert.Equal(t, "pending", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		assert.Zero(t, quota())
+	})
+	t.Run("unscanned QR is retained until its fixed deadline and expires in the leased background task", func(t *testing.T) {
+		reset()
+		defer func() {
+			queryStatus = "TRADE_SUCCESS"
+			require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("expires_at", 0).Error)
+		}()
+		queryStatus = "NOT_EXIST"
+		require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("expires_at", time.Now().Add(time.Minute).Unix()).Error)
+		assert.Contains(t, request("/cancel", `{"trade_no":"UTexisting"}`, "application/json").Body.String(), `"status":"pending"`)
+		assert.Zero(t, quota())
+		require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("expires_at", time.Now().Add(-time.Second).Unix()).Error)
+		require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
+		task, err := model.CreateSystemTask(alipayF2FExpiryTaskType, alipayF2FExpiryProgress{}, nil)
+		require.NoError(t, err)
+		claimed, ok, err := model.ClaimSystemTask(task.ID, task.Type, "expiry-test", time.Now().Add(time.Minute).Unix())
+		require.NoError(t, err)
+		require.True(t, ok)
+		client.Enabled = false // disabling checkout must not disable reconciliation
+		defer func() { client.Enabled = true }()
+		handler := alipayF2FExpiryHandler{}
+		require.True(t, handler.Enabled())
+		handler.Run(t.Context(), claimed, "expiry-test")
+		finished, err := model.GetSystemTaskByTaskID(task.TaskID)
+		require.NoError(t, err)
+		assert.Equal(t, model.SystemTaskStatusSucceeded, finished.Status)
+		assert.Equal(t, "expired", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		assert.Zero(t, quota())
+		progress, err := reconcileAlipayF2FExpiredOrders(t.Context(), order.Id)
+		require.NoError(t, err)
+		assert.Zero(t, progress.LastID, "cursor wraps so failed old orders will be retried")
 	})
 	t.Run("wallet overflow rolls order back and provider mismatch is refused", func(t *testing.T) {
 		reset()
@@ -467,6 +598,11 @@ func TestAlipayF2F(t *testing.T) {
 	})
 	t.Run("SDK rejects unsigned query responses", func(t *testing.T) {
 		badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, r.ParseForm())
+			if r.Form.Get("method") == "alipay.trade.close" {
+				_, _ = w.Write([]byte(`{"alipay_trade_close_response":{"code":"10000","out_trade_no":"UTexisting","trade_no":"ALI"}}`))
+				return
+			}
 			_, _ = w.Write([]byte(`{"alipay_trade_query_response":{"code":"10000","out_trade_no":"UTexisting","trade_no":"ALI","trade_status":"TRADE_SUCCESS","total_amount":"10.01"}}`))
 		}))
 		defer badServer.Close()
@@ -476,6 +612,36 @@ func TestAlipayF2F(t *testing.T) {
 		badClient := service.AlipayF2F{Client: badSDK}
 		_, _, err = badClient.Query(context.Background(), order.TradeNo)
 		require.Error(t, err)
+		closed, err := badClient.Close(context.Background(), order.TradeNo)
+		require.Error(t, err)
+		assert.False(t, closed)
+	})
+	t.Run("failed configuration write cleans only its new key file and unsafe paths fail closed", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("ALIPAY_F2F_KEY_DIR", dir)
+		config := service.AlipayF2FConfig{PrivateKey: private, KeyStorage: service.AlipayF2FKeyStorageFile}
+		encoded, finish, err := service.SealAlipayF2FConfig(config, "")
+		require.NoError(t, err)
+		assert.NotContains(t, encoded, "PRIVATE KEY")
+		files, err := filepath.Glob(filepath.Join(dir, "*.pem"))
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		err = model.SaveAlipayF2FOption("stale-revision", encoded, false)
+		require.Error(t, err)
+		finish(false)
+		_, err = os.Stat(files[0])
+		require.True(t, os.IsNotExist(err))
+		common.OptionMapRWMutex.Lock()
+		previous := common.OptionMap
+		common.OptionMap = map[string]string{model.AlipayF2FOptionKey: `{"private_key_file":"../outside.pem"}`}
+		common.OptionMapRWMutex.Unlock()
+		defer func() {
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap = previous
+			common.OptionMapRWMutex.Unlock()
+		}()
+		_, _, err = service.LoadAlipayF2FConfig()
+		require.ErrorIs(t, err, service.ErrAlipayF2FPrivateKeyUnavailable)
 	})
 	t.Run("admin configuration persists, redacts secrets and applies without restart", func(t *testing.T) {
 		common.OptionMapRWMutex.Lock()
@@ -494,6 +660,8 @@ func TestAlipayF2F(t *testing.T) {
 		oldConfig := *cfg
 		defer func() { *cfg = oldConfig }()
 		cfg.ComplianceConfirmed, cfg.ComplianceTermsVersion = true, operation_setting.CurrentComplianceTermsVersion
+		storeDir := t.TempDir()
+		t.Setenv("ALIPAY_F2F_KEY_DIR", storeDir)
 		settingsRouter := gin.New()
 		settingsRouter.GET("/settings", GetAlipayF2FSettings)
 		settingsRouter.PUT("/settings", SaveAlipayF2FSettings)
@@ -529,7 +697,16 @@ func TestAlipayF2F(t *testing.T) {
 		assert.True(t, live.Enabled)
 		var persisted model.Option
 		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
-		assert.Contains(t, persisted.Value, "PRIVATE KEY")
+		// The default storage keeps the key in a server file; the database
+		// holds only the file reference.
+		assert.Contains(t, response.Body.String(), `"key_storage":"file"`)
+		assert.NotContains(t, persisted.Value, "PRIVATE KEY")
+		keyFiles, err := filepath.Glob(filepath.Join(storeDir, "private-*.pem"))
+		require.NoError(t, err)
+		require.Len(t, keyFiles, 1)
+		savedKey, err := os.ReadFile(keyFiles[0])
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(private), string(savedKey))
 		assert.NotContains(t, send(http.MethodGet, "/settings", nil).Body.String(), "PRIVATE KEY")
 		assert.NotContains(t, send(http.MethodGet, "/options", nil).Body.String(), model.AlipayF2FOptionKey)
 		assert.Contains(t, send(http.MethodPut, "/options", OptionUpdateRequest{Key: model.AlipayF2FOptionKey, Value: "{}"}).Body.String(), `"success":false`)
@@ -550,8 +727,14 @@ func TestAlipayF2F(t *testing.T) {
 		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
 		var stored service.AlipayF2FConfig
 		require.NoError(t, common.UnmarshalJsonStr(persisted.Value, &stored))
-		assert.Equal(t, strings.TrimSpace(private), stored.PrivateKey)
+		assert.Empty(t, stored.PrivateKey)
 		assert.Equal(t, strings.TrimSpace(public), stored.AlipayPublicKey)
+		loaded, _, err := service.LoadAlipayF2FConfig()
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(private), loaded.PrivateKey)
+		unchangedFiles, err := filepath.Glob(filepath.Join(storeDir, "private-*.pem"))
+		require.NoError(t, err)
+		assert.Equal(t, keyFiles, unchangedFiles, "a blank key input must keep the existing key file")
 		request.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(persisted.Value)))
 		before := persisted.Value
 		request.PrivateKey = "invalid-key"
@@ -562,11 +745,103 @@ func TestAlipayF2F(t *testing.T) {
 		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
 		assert.Equal(t, before, persisted.Value)
 		// Changing merchant/environment with a pending order is rejected atomically.
-		require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("status", common.TopUpStatusPending).Error)
+		require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Updates(map[string]any{"status": common.TopUpStatusPending, "create_time": time.Now().Unix()}).Error)
 		request.NotifyURL, request.SellerID = stored.NotifyURL, "another-seller"
 		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), "Settle pending Alipay orders")
 		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
 		assert.Equal(t, before, persisted.Value)
+		// An abandoned order that Alipay never saw is expired and stops blocking.
+		require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("create_time", 0).Error)
+		queryStatus = "NOT_EXIST"
+		response = send(http.MethodPut, "/settings", request)
+		queryStatus = "TRADE_SUCCESS"
+		require.Contains(t, response.Body.String(), `"success":true`)
+		assert.Equal(t, common.TopUpStatusExpired, model.GetTopUpByTradeNo(order.TradeNo).Status)
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		request.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(persisted.Value)))
+		// Encrypted storage requires an explicit CRYPTO_SECRET, leaves only
+		// ciphertext in the database. Old files remain for stale node snapshots.
+		request.SellerID, request.KeyStorage = "seller-test", service.AlipayF2FKeyStorageEncrypted
+		t.Setenv("CRYPTO_SECRET", "")
+		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), "CRYPTO_SECRET")
+		oldCryptoSecret := common.CryptoSecret
+		defer func() { common.CryptoSecret = oldCryptoSecret }()
+		t.Setenv("CRYPTO_SECRET", "alipay-test-crypto-secret")
+		common.CryptoSecret = "alipay-test-crypto-secret"
+		response = send(http.MethodPut, "/settings", request)
+		require.Contains(t, response.Body.String(), `"success":true`)
+		assert.Contains(t, response.Body.String(), `"key_storage":"encrypted"`)
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		assert.NotContains(t, persisted.Value, "PRIVATE KEY")
+		assert.Contains(t, persisted.Value, "private_key_encrypted")
+		keyFiles, err = filepath.Glob(filepath.Join(storeDir, "private-*.pem"))
+		require.NoError(t, err)
+		require.Len(t, keyFiles, 1)
+		loaded, _, err = service.LoadAlipayF2FConfig()
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(private), loaded.PrivateKey)
+		// Ciphertext authentication must reject corruption without exposing a key.
+		var encrypted map[string]any
+		require.NoError(t, common.UnmarshalJsonStr(persisted.Value, &encrypted))
+		ciphertext := encrypted["private_key_encrypted"].(string)
+		sealed, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(ciphertext, "v1."))
+		require.NoError(t, err)
+		sealed[len(sealed)-1] ^= 1
+		encrypted["private_key_encrypted"] = "v1." + base64.StdEncoding.EncodeToString(sealed)
+		corrupt, err := common.Marshal(encrypted)
+		require.NoError(t, err)
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[model.AlipayF2FOptionKey] = string(corrupt)
+		common.OptionMapRWMutex.Unlock()
+		_, _, err = service.LoadAlipayF2FConfig()
+		require.ErrorIs(t, err, service.ErrAlipayF2FPrivateKeyUnavailable)
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[model.AlipayF2FOptionKey] = persisted.Value
+		common.OptionMapRWMutex.Unlock()
+		// A node holding a different secret reports the key as unavailable.
+		common.CryptoSecret = "another-node-secret"
+		_, err = service.GetAlipayF2F()
+		require.ErrorIs(t, err, service.ErrAlipayF2FPrivateKeyUnavailable)
+		unavailable := send(http.MethodGet, "/settings", nil).Body.String()
+		assert.Contains(t, unavailable, `"private_key_unavailable":true`)
+		assert.Contains(t, unavailable, `"private_key_configured":false`)
+		common.CryptoSecret = "alipay-test-crypto-secret"
+		// A configuration saved before key storage existed still works and its
+		// plaintext key leaves the database on the next save.
+		legacy, err := common.Marshal(map[string]any{"enabled": false, "app_id": "app-test", "seller_id": "seller-test", "notify_url": stored.NotifyURL, "private_key": private, "alipay_public_key": public})
+		require.NoError(t, err)
+		require.NoError(t, db.Save(&model.Option{Key: model.AlipayF2FOptionKey, Value: string(legacy)}).Error)
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[model.AlipayF2FOptionKey] = string(legacy)
+		common.OptionMapRWMutex.Unlock()
+		_, err = service.GetAlipayF2F()
+		require.NoError(t, err)
+		assert.Contains(t, send(http.MethodGet, "/settings", nil).Body.String(), `"key_storage":"database"`)
+		request.KeyStorage, request.Revision = "", fmt.Sprintf("%x", sha256.Sum256(legacy))
+		response = send(http.MethodPut, "/settings", request)
+		require.Contains(t, response.Body.String(), `"success":true`)
+		assert.Contains(t, response.Body.String(), `"key_storage":"file"`)
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		assert.NotContains(t, persisted.Value, "PRIVATE KEY")
+		// A lost key file is reported and repaired only by entering the key again.
+		keyFiles, err = filepath.Glob(filepath.Join(storeDir, "private-*.pem"))
+		require.NoError(t, err)
+		require.Len(t, keyFiles, 2, "old node snapshots must keep working across a storage switch")
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		var fileReference struct {
+			Name string `json:"private_key_file"`
+		}
+		require.NoError(t, common.UnmarshalJsonStr(persisted.Value, &fileReference))
+		require.NoError(t, os.Remove(filepath.Join(storeDir, fileReference.Name)))
+		_, err = service.GetAlipayF2F()
+		require.ErrorIs(t, err, service.ErrAlipayF2FPrivateKeyUnavailable)
+		request.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(persisted.Value)))
+		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":false`)
+		request.PrivateKey = private
+		require.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":true`)
+		request.PrivateKey = ""
+		_, err = service.GetAlipayF2F()
+		require.NoError(t, err)
 		// Exercise the real authorization middleware with live login sessions,
 		// rather than trusting a forged role/user-id header or request body.
 		require.NoError(t, db.AutoMigrate(&model.UserSession{}, &model.AuditLog{}))

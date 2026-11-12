@@ -24,8 +24,10 @@ type TopUp struct {
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
 	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	// Absolute Alipay QR/payment deadline. Zero preserves pre-upgrade orders.
+	ExpiresAt    int64  `json:"-" gorm:"default:0"`
+	CompleteTime int64  `json:"complete_time"`
+	Status       string `json:"status"`
 }
 
 const (

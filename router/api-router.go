@@ -123,6 +123,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.POST("/alipay-f2f/pay", middleware.UserCriticalRateLimit("alipay-f2f-pay"), controller.RequestAlipayF2F)
 				selfRoute.POST("/alipay-f2f/query", middleware.AlipayF2FQueryRateLimit(), controller.QueryAlipayF2FOrder)
+				selfRoute.POST("/alipay-f2f/cancel", middleware.SessionCookieOriginGuard(), middleware.AlipayF2FQueryRateLimit(), controller.CancelAlipayF2FOrder)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)

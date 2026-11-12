@@ -39,6 +39,9 @@ const settings: AlipayF2FSettings = {
   alipay_public_key_configured: true,
   from_environment: false,
   revision: 'revision-1',
+  key_storage: 'file',
+  private_key_unavailable: false,
+  encryption_available: true,
 }
 
 beforeEach(async () => {
@@ -99,11 +102,69 @@ it('keeps saved keys blank and saves a disabled gateway using the existing keys'
       app_id: settings.app_id,
       seller_id: settings.seller_id,
       notify_url: settings.notify_url,
+      key_storage: 'file',
       private_key: '',
       alipay_public_key: '',
       revision: settings.revision,
     })
   )
+})
+
+it('saves encrypted storage when the administrator selects it for an unencrypted legacy key', async () => {
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: { success: true, data: { ...settings, key_storage: 'database' } },
+  })
+  const put = vi.spyOn(api, 'put').mockResolvedValue({
+    data: {
+      success: true,
+      data: { ...settings, key_storage: 'encrypted', revision: 'revision-2' },
+    },
+  })
+  show()
+  const file = await screen.findByRole('radio', { name: 'Server file' })
+  expect(file).toBeChecked()
+  expect(
+    screen.getByText(
+      'The private key is currently stored unencrypted in the database. Save to move it to the selected storage.'
+    )
+  ).toBeInTheDocument()
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('radio', { name: 'Encrypted in database' }))
+  await user.click(screen.getByRole('button', { name: 'Save Alipay settings' }))
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith(
+      '/api/option/alipay-f2f',
+      expect.objectContaining({ key_storage: 'encrypted', private_key: '' })
+    )
+  )
+})
+
+it('disables encrypted storage without CRYPTO_SECRET and asks for the key again when it is unreadable', async () => {
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        ...settings,
+        encryption_available: false,
+        private_key_configured: false,
+        private_key_unavailable: true,
+      },
+    },
+  })
+  show()
+  expect(
+    await screen.findByRole('radio', { name: 'Encrypted in database' })
+  ).toHaveAttribute('aria-disabled', 'true')
+  expect(
+    screen.getByText(
+      'Set the CRYPTO_SECRET environment variable to enable encrypted storage.'
+    )
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'This server cannot read the saved private key. Enter the private key again and save.'
+    )
+  ).toBeInTheDocument()
 })
 
 it('clears newly entered keys only after a successful save and retains edits on failure', async () => {

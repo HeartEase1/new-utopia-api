@@ -7,6 +7,7 @@
   "%s%.6f quota": "%s%.6f 额度",
   "--form 'file=@\"%s\"' (size: %d bytes, content-type: %s)": "--form 'file=@\"%s\"' (大小: %d 字节, content-type: %s)",
   "Add abilities for channel %d failed: %s": "修复渠道一致性: 为渠道 %d 重建 abilities 记录失败: %s",
+  "Alipay F2F paid order was not credited trade_no=%s paid_amount=%s reason=%q": "支付宝当面付订单已付款但未到账 trade_no=%s paid_amount=%s reason=%q",
   "Auto selected group: %s": "Auto 分组选定: %s",
   "Auto selecting group: %s, priorityRetry: %d": "Auto 分组尝试: %s, priorityRetry: %d",
   "Batch task %s already transitioned by another process, skip billing": "批量轮询: 任务 %s 的状态已由其他进程更新，跳过计费",

@@ -16,16 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 
-import { queryAlipayF2FOrder, type AlipayF2FOrder } from '../../api'
+import {
+  cancelAlipayF2FOrder,
+  queryAlipayF2FOrder,
+  type AlipayF2FOrder,
+} from '../../api'
 import { buildAlipayDeepLink, isAlipayLaunchRestricted } from '../../lib/alipay'
 
 interface AlipayF2FDialogProps {
@@ -70,9 +75,35 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
   const closed = query.data === 'expired'
   const deepLink = buildAlipayDeepLink(props.order.qr_code)
   const restricted = isAlipayLaunchRestricted(navigator.userAgent)
+  const paidReported = useRef(false)
+  const reportPaid = () => {
+    if (!paidReported.current) {
+      paidReported.current = true
+      onPaid()
+    }
+  }
+  const cancel = useMutation({
+    mutationFn: () => cancelAlipayF2FOrder(props.order.trade_no),
+    retry: false,
+    meta: { errorToast: false },
+    onSuccess: (status) => {
+      if (status === 'success') reportPaid()
+      if (status === 'pending') {
+        toast.info(
+          t(
+            'Alipay has no trade to close yet. The QR code may remain payable until it expires.'
+          )
+        )
+      }
+      props.onClose()
+    },
+  })
 
   useEffect(() => {
-    if (paid) onPaid()
+    if (paid && !paidReported.current) {
+      paidReported.current = true
+      onPaid()
+    }
   }, [paid, onPaid])
 
   useEffect(() => {
@@ -101,8 +132,12 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
       description={t('Scan with Alipay or open the Alipay app on your phone.')}
       contentClassName='sm:max-w-md'
       footer={
-        <Button variant='outline' onClick={props.onClose}>
-          {t('Cancel')}
+        <Button
+          variant='outline'
+          disabled={cancel.isPending}
+          onClick={() => cancel.mutate()}
+        >
+          {cancel.isPending ? t('Cancelling payment...') : t('Cancel')}
         </Button>
       }
     >
@@ -111,6 +146,13 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
         <div role='status' aria-live='polite'>
           {paid ? t('Payment received') : t('Waiting for payment confirmation')}
         </div>
+        {cancel.isError && (
+          <p role='alert'>
+            {t(
+              'Unable to cancel payment. Check the payment status and try again.'
+            )}
+          </p>
+        )}
         {!paid && !closed && !expired && props.order.qr_code && (
           <div className='rounded-lg bg-white p-4'>
             <QRCodeSVG

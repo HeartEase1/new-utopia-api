@@ -27,9 +27,11 @@ import * as z from 'zod'
 import { CopyButton } from '@/components/copy-button'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
@@ -54,6 +56,7 @@ function initialValues(settings: AlipayF2FSettings): FormValues {
     app_id: settings.app_id,
     seller_id: settings.seller_id,
     notify_url: settings.notify_url,
+    key_storage: settings.key_storage === 'encrypted' ? 'encrypted' : 'file',
     private_key: '',
     alipay_public_key: '',
     revision: settings.revision,
@@ -83,6 +86,7 @@ const schema = z.object({
         return false
       }
     }),
+  key_storage: z.enum(['file', 'encrypted']),
   private_key: z.string().trim(),
   alipay_public_key: z.string().trim(),
   revision: z.string(),
@@ -277,6 +281,87 @@ function AlipayF2FSettingsForm({ settings }: { settings: AlipayF2FSettings }) {
             {t('The key is not shown again after saving.')}
           </p>
         </div>
+        <div className='space-y-3 md:col-span-2'>
+          <Label id='alipay-key-storage-label'>
+            {t('Private key storage')}
+          </Label>
+          {settings.private_key_unavailable && (
+            <Alert variant='destructive'>
+              <AlertDescription>
+                {t(
+                  'This server cannot read the saved private key. Enter the private key again and save.'
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+          {settings.key_storage === 'database' && (
+            <Alert>
+              <AlertDescription>
+                {t(
+                  'The private key is currently stored unencrypted in the database. Save to move it to the selected storage.'
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+          <RadioGroup
+            aria-labelledby='alipay-key-storage-label'
+            value={values.key_storage}
+            onValueChange={(value) => {
+              if (value === 'file' || value === 'encrypted') {
+                form.setValue('key_storage', value)
+              }
+            }}
+          >
+            {(
+              [
+                [
+                  'file',
+                  t('Server file'),
+                  t(
+                    'The key is written to the server data directory and is not stored in the database. Suited to a single server.'
+                  ),
+                ],
+                [
+                  'encrypted',
+                  t('Encrypted in database'),
+                  t(
+                    'The key is encrypted with CRYPTO_SECRET before it is stored in the database. Suited to multiple servers.'
+                  ),
+                ],
+              ] as const
+            ).map(([storage, label, description]) => (
+              <div key={storage} className='flex items-start gap-2'>
+                <RadioGroupItem
+                  id={`alipay-key-storage-${storage}`}
+                  value={storage}
+                  className='mt-0.5'
+                  aria-describedby={`alipay-key-storage-${storage}-description`}
+                  disabled={
+                    storage === 'encrypted' && !settings.encryption_available
+                  }
+                />
+                <div className='space-y-0.5'>
+                  <Label htmlFor={`alipay-key-storage-${storage}`}>
+                    {label}
+                  </Label>
+                  <p
+                    id={`alipay-key-storage-${storage}-description`}
+                    className='text-muted-foreground text-sm'
+                  >
+                    {description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </RadioGroup>
+          {!settings.encryption_available && (
+            <p className='text-muted-foreground text-sm'>
+              {t(
+                'Set the CRYPTO_SECRET environment variable to enable encrypted storage.'
+              )}
+            </p>
+          )}
+        </div>
         <div className='space-y-2 md:col-span-2'>
           <Label htmlFor='alipay-public-key'>{t('Alipay public key')}</Label>
           <Textarea
@@ -301,7 +386,7 @@ function AlipayF2FSettingsForm({ settings }: { settings: AlipayF2FSettings }) {
       {settings.from_environment && (
         <p className='text-muted-foreground text-sm'>
           {t(
-            'Loaded from existing environment settings. Saving here switches to database settings.'
+            'Loaded from existing environment settings. Saving here switches to settings managed on this page.'
           )}
         </p>
       )}

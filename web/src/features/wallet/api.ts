@@ -78,6 +78,19 @@ export async function queryAlipayF2FOrder(
   return res.data.data.status
 }
 
+export async function cancelAlipayF2FOrder(tradeNo: string): Promise<string> {
+  const res = await api.post('/api/user/alipay-f2f/cancel', {
+    trade_no: tradeNo,
+  })
+  if (!res.data.success) {
+    throw createServerError(
+      res.data,
+      'Unable to cancel payment. Check the payment status and try again.'
+    )
+  }
+  return res.data.data.status
+}
+
 /**
  * Check if API response is successful
  */

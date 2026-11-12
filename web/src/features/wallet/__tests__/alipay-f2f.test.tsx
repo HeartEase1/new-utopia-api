@@ -87,6 +87,70 @@ function showDialog(expiresAt = Date.now() / 1000 + 900) {
   return { onPaid, onClose }
 }
 
+it('waits for Alipay cancellation before closing and prevents duplicate cancellation', async () => {
+  let finishCancel: ((value: unknown) => void) | undefined
+  const post = vi.spyOn(api, 'post').mockImplementation((url) => {
+    if (url === '/api/user/alipay-f2f/cancel') {
+      return new Promise((resolve) => {
+        finishCancel = resolve
+      })
+    }
+    return Promise.resolve({
+      data: { success: true, data: { status: 'pending' } },
+    })
+  })
+  const { onClose } = showDialog()
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith('/api/user/alipay-f2f/cancel', {
+      trade_no: 'UTtest',
+    })
+  )
+  expect(onClose).not.toHaveBeenCalled()
+  expect(
+    screen.getByRole('button', { name: 'Cancelling payment...' })
+  ).toBeDisabled()
+  await act(async () =>
+    finishCancel?.({ data: { success: true, data: { status: 'expired' } } })
+  )
+  await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+})
+
+it('keeps the dialog open after cancellation failure and allows retry', async () => {
+  vi.spyOn(api, 'post').mockImplementation((url) => {
+    if (url === '/api/user/alipay-f2f/cancel') {
+      return Promise.reject(new Error('offline'))
+    }
+    return Promise.resolve({
+      data: { success: true, data: { status: 'pending' } },
+    })
+  })
+  const { onClose } = showDialog()
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Unable to cancel payment'
+  )
+  expect(onClose).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+})
+
+it('refreshes the balance if payment wins the race with cancellation', async () => {
+  vi.spyOn(api, 'post').mockImplementation((url) =>
+    Promise.resolve({
+      data: {
+        success: true,
+        data: {
+          status: url === '/api/user/alipay-f2f/cancel' ? 'success' : 'pending',
+        },
+      },
+    })
+  )
+  const { onPaid, onClose } = showDialog()
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(onPaid).toHaveBeenCalledTimes(1))
+  expect(onClose).toHaveBeenCalledTimes(1)
+})
+
 it('keeps a pending payment uncredited and displays a QR code and app launch button', async () => {
   vi.spyOn(api, 'post').mockResolvedValue({
     data: { success: true, data: { status: 'pending' } },
@@ -158,7 +222,7 @@ it('keeps the payment dialog open after outside clicks and Escape until Cancel i
     screen.queryByRole('button', { name: 'Close' })
   ).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Cancel' }))
-  expect(onClose).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
@@ -171,21 +235,27 @@ it('stops automatic queries when Cancel closes the dialog', async () => {
   await act(() => vi.advanceTimersByTimeAsync(5000))
   const beforeClose = post.mock.calls.length
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  await act(() => vi.advanceTimersByTimeAsync(0))
   expect(onClose).toHaveBeenCalledTimes(1)
   await act(() => vi.advanceTimersByTimeAsync(180000))
-  expect(post).toHaveBeenCalledTimes(beforeClose)
+  expect(post).toHaveBeenCalledTimes(beforeClose + 1)
 })
 
 it('aborts an in-flight status request when Cancel closes the dialog', async () => {
   let signal: AbortSignal | undefined
-  vi.spyOn(api, 'post').mockImplementation((_url, _body, config) => {
+  vi.spyOn(api, 'post').mockImplementation((url, _body, config) => {
+    if (url === '/api/user/alipay-f2f/cancel') {
+      return Promise.resolve({
+        data: { success: true, data: { status: 'expired' } },
+      })
+    }
     signal = config?.signal as AbortSignal | undefined
     return new Promise(() => {})
   })
   showDialog()
   await waitFor(() => expect(signal).toBeDefined())
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-  expect(signal?.aborted).toBe(true)
+  await waitFor(() => expect(signal?.aborted).toBe(true))
 })
 
 it('shows a retry action after a failed query and refreshes the balance only after server-confirmed payment', async () => {

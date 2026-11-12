@@ -77,7 +77,9 @@ func RechargeAlipayF2F(tradeNo string, paidAmount decimal.Decimal, callerIP stri
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil
 		}
-		if topUp.Status != common.TopUpStatusPending {
+		// An expired order still settles: a verified payment of the exact amount
+		// outranks a local judgement that the order had been abandoned.
+		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired {
 			return ErrTopUpStatusInvalid
 		}
 		credited, err := topUp.alipayF2FQuota()
@@ -85,7 +87,7 @@ func RechargeAlipayF2F(tradeNo string, paidAmount decimal.Decimal, callerIP stri
 			return ErrInvalidTopUpQuota
 		}
 		// The conditional write also protects against other order writers.
-		result := tx.Model(&TopUp{}).Where("id = ? AND status = ?", topUp.Id, common.TopUpStatusPending).
+		result := tx.Model(&TopUp{}).Where("id = ? AND status = ?", topUp.Id, topUp.Status).
 			Updates(map[string]any{"status": common.TopUpStatusSuccess, "complete_time": common.GetTimestamp()})
 		if result.Error != nil {
 			return result.Error

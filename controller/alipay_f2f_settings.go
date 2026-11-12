@@ -9,10 +9,13 @@ the Free Software Foundation, either version 3 of the License, or
 package controller
 
 import (
+	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -28,9 +31,15 @@ type alipayF2FSettingsRequest struct {
 }
 
 // Responses are an allowlist: neither saved key is ever sent to a browser.
-func alipayF2FSettingsView(config service.AlipayF2FConfig, raw string) gin.H {
+func alipayF2FSettingsView(config service.AlipayF2FConfig, raw string, keyUnavailable bool) gin.H {
+	keyStorage := config.KeyStorage
+	if raw == "" {
+		keyStorage = ""
+	}
 	return gin.H{
-		"enabled": config.Enabled, "sandbox": config.Sandbox, "app_id": config.AppID,
+		"key_storage": keyStorage, "private_key_unavailable": keyUnavailable,
+		"encryption_available": service.AlipayF2FEncryptionAvailable(),
+		"enabled":              config.Enabled, "sandbox": config.Sandbox, "app_id": config.AppID,
 		"seller_id": config.SellerID, "notify_url": config.NotifyURL,
 		"private_key_configured":       strings.TrimSpace(config.PrivateKey) != "",
 		"alipay_public_key_configured": strings.TrimSpace(config.AlipayPublicKey) != "",
@@ -41,7 +50,8 @@ func alipayF2FSettingsView(config service.AlipayF2FConfig, raw string) gin.H {
 
 func GetAlipayF2FSettings(c *gin.Context) {
 	config, raw, err := service.LoadAlipayF2FConfig()
-	if err != nil && raw != "" {
+	keyUnavailable := errors.Is(err, service.ErrAlipayF2FPrivateKeyUnavailable)
+	if err != nil && raw != "" && !keyUnavailable {
 		common.ApiErrorT(c, "Unable to load Alipay settings.")
 		return
 	}
@@ -54,7 +64,7 @@ func GetAlipayF2FSettings(c *gin.Context) {
 		}
 		config.NotifyURL = strings.TrimRight(base, "/") + "/api/alipay-f2f/notify"
 	}
-	common.ApiSuccess(c, alipayF2FSettingsView(config, raw))
+	common.ApiSuccess(c, alipayF2FSettingsView(config, raw, keyUnavailable))
 }
 
 // Both save and connection check use the same full validation and secret merge.
@@ -70,8 +80,9 @@ func readAlipayF2FSettingsRequest(c *gin.Context) (service.AlipayF2FConfig, stri
 		common.ApiErrorT(c, "Invalid parameters")
 		return service.AlipayF2FConfig{}, "", false
 	}
+	// A key this node cannot read counts as absent and must be entered again.
 	current, raw, err := service.LoadAlipayF2FConfig()
-	if err != nil && raw != "" {
+	if err != nil && raw != "" && !errors.Is(err, service.ErrAlipayF2FPrivateKeyUnavailable) {
 		common.ApiErrorT(c, "Unable to load Alipay settings.")
 		return current, raw, false
 	}
@@ -88,6 +99,18 @@ func readAlipayF2FSettingsRequest(c *gin.Context) (service.AlipayF2FConfig, stri
 	}
 	if next.AlipayPublicKey == "" {
 		next.AlipayPublicKey = current.AlipayPublicKey
+	}
+	// Plaintext database storage is never chosen again: an unspecified storage
+	// keeps the current protected one and otherwise moves the key to a file.
+	if next.KeyStorage == "" {
+		next.KeyStorage = current.KeyStorage
+		if raw == "" || next.KeyStorage == service.AlipayF2FKeyStorageLegacy {
+			next.KeyStorage = service.AlipayF2FKeyStorageFile
+		}
+	}
+	if next.KeyStorage != service.AlipayF2FKeyStorageFile && next.KeyStorage != service.AlipayF2FKeyStorageEncrypted {
+		common.ApiErrorT(c, "Invalid parameters")
+		return current, raw, false
 	}
 	if _, err := service.ValidateAlipayF2FConfig(next); err != nil {
 		common.ApiErrorT(c, "Check the Alipay app ID, seller PID, RSA2 keys and HTTPS callback URL.")
@@ -111,12 +134,19 @@ func SaveAlipayF2FSettings(c *gin.Context) {
 		common.ApiErrorT(c, "Disable Alipay and settle pending orders before changing the merchant or environment.")
 		return
 	}
-	encoded, err := common.Marshal(next)
-	if err != nil {
-		common.ApiErrorT(c, "Failed to save Alipay settings.")
-		return
+	// Reconcile using the old merchant before attempting a credential switch.
+	// Keep the same pacing/batch limit as the scheduled expiry task.
+	if changed {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+		defer cancel()
+		_, _ = reconcileAlipayF2FExpiredOrders(ctx, 0)
 	}
-	if err := model.SaveAlipayF2FOption(raw, string(encoded), changed); err != nil {
+	encoded, finish, err := service.SealAlipayF2FConfig(next, raw)
+	if err == nil {
+		err = model.SaveAlipayF2FOption(raw, encoded, changed)
+		finish(err == nil)
+	}
+	if err != nil {
 		// Only safe, deliberately constructed business messages may leave this API.
 		if _, ok := err.(*common.Message); ok {
 			common.ApiError(c, err)
@@ -125,7 +155,7 @@ func SaveAlipayF2FSettings(c *gin.Context) {
 		}
 		return
 	}
-	common.ApiSuccess(c, alipayF2FSettingsView(next, string(encoded)))
+	common.ApiSuccess(c, alipayF2FSettingsView(next, encoded, false))
 }
 
 func CheckAlipayF2FSettings(c *gin.Context) {

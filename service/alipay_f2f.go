@@ -2,17 +2,26 @@ package service
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hkdf"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/smartwalle/alipay/v3"
 )
@@ -24,7 +33,20 @@ type AlipayF2F struct {
 	Enabled                    bool
 }
 
-// AlipayF2FConfig is persisted as one protected option. PrivateKey and
+// Where the application private key lives once settings are saved. The legacy
+// value marks configurations saved before key storage existed; it is readable
+// but never written again.
+const (
+	AlipayF2FKeyStorageFile      = "file"
+	AlipayF2FKeyStorageEncrypted = "encrypted"
+	AlipayF2FKeyStorageLegacy    = "database"
+)
+
+// ErrAlipayF2FPrivateKeyUnavailable means the settings exist but this node
+// cannot read the key: the key file is absent or CRYPTO_SECRET differs.
+var ErrAlipayF2FPrivateKeyUnavailable = errors.New("Alipay F2F private key is unavailable on this node")
+
+// AlipayF2FConfig is the resolved configuration held in memory. PrivateKey and
 // AlipayPublicKey are intentionally omitted from the admin GET response.
 type AlipayF2FConfig struct {
 	Enabled         bool   `json:"enabled"`
@@ -34,6 +56,133 @@ type AlipayF2FConfig struct {
 	NotifyURL       string `json:"notify_url"`
 	PrivateKey      string `json:"private_key"`
 	AlipayPublicKey string `json:"alipay_public_key"`
+	KeyStorage      string `json:"key_storage"`
+}
+
+// alipayF2FStoredConfig is the database form. New saves leave PrivateKey empty
+// and carry either the key file name or the ciphertext.
+type alipayF2FStoredConfig struct {
+	AlipayF2FConfig
+	PrivateKeyFile      string `json:"private_key_file,omitempty"`
+	PrivateKeyEncrypted string `json:"private_key_encrypted,omitempty"`
+}
+
+const alipayF2FKeyCipherContext = "alipay-f2f-private-key-v1"
+
+var alipayF2FKeyFileName = regexp.MustCompile(`^private-[0-9a-f]{32}\.pem$`)
+
+// The default is relative to the working directory, which is the persistent
+// /data volume in the official container image.
+func alipayF2FKeyFilePath(name string) (string, error) {
+	if !alipayF2FKeyFileName.MatchString(name) {
+		return "", errors.New("invalid Alipay F2F key file name")
+	}
+	dir := os.Getenv("ALIPAY_F2F_KEY_DIR")
+	if dir == "" {
+		dir = "alipay-f2f"
+	}
+	return filepath.Join(dir, name), nil
+}
+
+// AlipayF2FEncryptionAvailable requires an explicit CRYPTO_SECRET. The session
+// secret fallback and the per-start random default would make ciphertext
+// unreadable after a session rotation or a restart.
+func AlipayF2FEncryptionAvailable() bool {
+	return os.Getenv("CRYPTO_SECRET") != ""
+}
+
+func alipayF2FKeyCipher() (cipher.AEAD, error) {
+	if !AlipayF2FEncryptionAvailable() {
+		return nil, common.NewMessage("Set the CRYPTO_SECRET environment variable to enable encrypted storage.")
+	}
+	key, err := hkdf.Key(sha256.New, []byte(common.CryptoSecret), nil, alipayF2FKeyCipherContext, 32)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
+// SealAlipayF2FConfig builds the database value for a validated configuration
+// without the plaintext private key. finish must be called with the outcome of
+// the database write: it removes a newly created file on a failed write.
+// Replaced files are retained: another node may still hold the previous option
+// snapshot while it finishes a callback or refreshes its configuration cache.
+func SealAlipayF2FConfig(config AlipayF2FConfig, previousRaw string) (encoded string, finish func(saved bool), err error) {
+	var previous alipayF2FStoredConfig
+	if previousRaw != "" {
+		_ = common.UnmarshalJsonStr(previousRaw, &previous)
+	}
+	stored := alipayF2FStoredConfig{AlipayF2FConfig: config}
+	stored.PrivateKey = ""
+	createdPath := ""
+	switch config.KeyStorage {
+	case AlipayF2FKeyStorageFile:
+		stored.PrivateKeyFile = previous.PrivateKeyFile
+		existing := ""
+		if existingPath, pathErr := alipayF2FKeyFilePath(previous.PrivateKeyFile); pathErr == nil {
+			contents, _ := os.ReadFile(existingPath)
+			existing = string(contents)
+		}
+		if existing != config.PrivateKey {
+			created := false
+			stored.PrivateKeyFile = "private-" + strings.ReplaceAll(uuid.NewString(), "-", "") + ".pem"
+			createdPath, err = alipayF2FKeyFilePath(stored.PrivateKeyFile)
+			if err == nil {
+				err = os.MkdirAll(filepath.Dir(createdPath), 0700)
+			}
+			if err == nil {
+				var file *os.File
+				file, err = os.OpenFile(createdPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+				if err == nil {
+					created = true
+					_, err = file.WriteString(config.PrivateKey)
+					closeErr := file.Close()
+					if err == nil {
+						err = closeErr
+					}
+				}
+			}
+			if err != nil {
+				if created {
+					_ = os.Remove(createdPath)
+				}
+				return "", nil, common.NewMessage("Unable to write the Alipay private key file. Check the data directory permissions.")
+			}
+		}
+	case AlipayF2FKeyStorageEncrypted:
+		aead, err := alipayF2FKeyCipher()
+		if err != nil {
+			return "", nil, err
+		}
+		nonce := make([]byte, aead.NonceSize())
+		if _, err := rand.Read(nonce); err != nil {
+			return "", nil, err
+		}
+		sealed := aead.Seal(nonce, nonce, []byte(config.PrivateKey), []byte(alipayF2FKeyCipherContext))
+		stored.PrivateKeyEncrypted = "v1." + base64.StdEncoding.EncodeToString(sealed)
+	default:
+		return "", nil, errors.New("invalid Alipay F2F key storage")
+	}
+	value, err := common.Marshal(stored)
+	if err != nil {
+		if createdPath != "" {
+			_ = os.Remove(createdPath)
+		}
+		return "", nil, err
+	}
+	finish = func(saved bool) {
+		if !saved {
+			if createdPath != "" {
+				_ = os.Remove(createdPath)
+			}
+			return
+		}
+	}
+	return string(value), finish, nil
 }
 
 var alipayF2FState struct {
@@ -91,8 +240,10 @@ func envAlipayF2FConfig() (AlipayF2FConfig, error) {
 	return config, err
 }
 
-// LoadAlipayF2FConfig reads the single persisted snapshot. An empty database
-// option selects the legacy environment/file configuration.
+// LoadAlipayF2FConfig reads the single persisted snapshot and resolves the
+// private key from its storage. An empty database option selects the legacy
+// environment/file configuration. With ErrAlipayF2FPrivateKeyUnavailable the
+// returned configuration still carries every non-secret field.
 func LoadAlipayF2FConfig() (config AlipayF2FConfig, raw string, err error) {
 	common.OptionMapRWMutex.RLock()
 	encoded := common.OptionMap[model.AlipayF2FOptionKey]
@@ -101,8 +252,41 @@ func LoadAlipayF2FConfig() (config AlipayF2FConfig, raw string, err error) {
 		config, err := envAlipayF2FConfig()
 		return config, "", err
 	}
-	if err := common.UnmarshalJsonStr(encoded, &config); err != nil {
+	var stored alipayF2FStoredConfig
+	if err := common.UnmarshalJsonStr(encoded, &stored); err != nil {
 		return config, encoded, errors.New("invalid persisted Alipay F2F configuration")
+	}
+	config = stored.AlipayF2FConfig
+	switch {
+	case stored.PrivateKeyFile != "":
+		config.KeyStorage = AlipayF2FKeyStorageFile
+		path, err := alipayF2FKeyFilePath(stored.PrivateKeyFile)
+		if err != nil {
+			return config, encoded, ErrAlipayF2FPrivateKeyUnavailable
+		}
+		contents, err := os.ReadFile(path)
+		if err != nil || len(contents) == 0 {
+			return config, encoded, ErrAlipayF2FPrivateKeyUnavailable
+		}
+		config.PrivateKey = string(contents)
+	case stored.PrivateKeyEncrypted != "":
+		config.KeyStorage = AlipayF2FKeyStorageEncrypted
+		aead, err := alipayF2FKeyCipher()
+		if err != nil {
+			return config, encoded, ErrAlipayF2FPrivateKeyUnavailable
+		}
+		payload, ok := strings.CutPrefix(stored.PrivateKeyEncrypted, "v1.")
+		sealed, err := base64.StdEncoding.DecodeString(payload)
+		if !ok || err != nil || len(sealed) <= aead.NonceSize() {
+			return config, encoded, ErrAlipayF2FPrivateKeyUnavailable
+		}
+		plaintext, err := aead.Open(nil, sealed[:aead.NonceSize()], sealed[aead.NonceSize():], []byte(alipayF2FKeyCipherContext))
+		if err != nil {
+			return config, encoded, ErrAlipayF2FPrivateKeyUnavailable
+		}
+		config.PrivateKey = string(plaintext)
+	default:
+		config.KeyStorage = AlipayF2FKeyStorageLegacy
 	}
 	return config, encoded, nil
 }
@@ -146,14 +330,23 @@ func AlipayAmount(raw string) (decimal.Decimal, error) {
 	return amount, nil
 }
 
-func (a *AlipayF2F) Precreate(ctx context.Context, tradeNo, amount string) (string, error) {
+// The upstream SDK omits qr_code_timeout_express; embedding preserves its
+// signed Param contract while adding this official precreate parameter.
+type alipayF2FPrecreate struct {
+	alipay.TradePreCreate
+	QRCodeTimeoutExpress string `json:"qr_code_timeout_express"`
+}
+
+func (a *AlipayF2F) Precreate(ctx context.Context, tradeNo, amount string, expiresAt time.Time) (string, error) {
 	if _, err := AlipayAmount(amount); err != nil {
 		return "", err
 	}
-	rsp, err := a.Client.TradePreCreate(ctx, alipay.TradePreCreate{Trade: alipay.Trade{
+	rsp := new(alipay.TradePreCreateRsp)
+	err := a.Client.Request(ctx, alipayF2FPrecreate{TradePreCreate: alipay.TradePreCreate{Trade: alipay.Trade{
 		OutTradeNo: tradeNo, TotalAmount: amount, Subject: "New Utopia account top-up",
-		ProductCode: "FACE_TO_FACE_PAYMENT", NotifyURL: a.NotifyURL, SellerId: a.SellerID, TimeoutExpress: "15m",
-	}})
+		ProductCode: "FACE_TO_FACE_PAYMENT", NotifyURL: a.NotifyURL, SellerId: a.SellerID, TimeoutExpress: "5m",
+		TimeExpire: expiresAt.In(time.FixedZone("CST", 8*60*60)).Format("2006-01-02 15:04:05"),
+	}}, QRCodeTimeoutExpress: "5m"}, rsp)
 	if err != nil {
 		return "", err
 	}
@@ -167,6 +360,25 @@ func (a *AlipayF2F) Precreate(ctx context.Context, tradeNo, amount string) (stri
 		return "", errors.New("invalid Alipay precreate response")
 	}
 	return rsp.QRCode, nil
+}
+
+// Close only closes unpaid trades. Never use trade.cancel here: that API may
+// refund a paid trade. A failed close must be reconciled with a signed query.
+func (a *AlipayF2F) Close(ctx context.Context, tradeNo string) (bool, error) {
+	rsp, err := a.Client.TradeClose(ctx, alipay.TradeClose{OutTradeNo: tradeNo})
+	if err != nil {
+		return false, err
+	}
+	if rsp == nil {
+		return false, errors.New("empty Alipay close response")
+	}
+	if rsp.IsFailure() {
+		return false, nil
+	}
+	if rsp.OutTradeNo != tradeNo || rsp.TradeNo == "" {
+		return false, errors.New("Alipay close order mismatch")
+	}
+	return true, nil
 }
 
 // VerifyNotification accepts POST form fields only. Checking merchant identity
@@ -203,8 +415,9 @@ func (a *AlipayF2F) Query(ctx context.Context, tradeNo string) (status, amount s
 		return "", "", errors.New("empty Alipay query response")
 	}
 	if rsp.IsFailure() {
+		// An unscanned QR code has no trade yet; callers decide when that is final.
 		if rsp.SubCode == "ACQ.TRADE_NOT_EXIST" {
-			return "WAIT_BUYER_PAY", "", nil
+			return "TRADE_NOT_EXIST", "", nil
 		}
 		return "", "", fmt.Errorf("Alipay query failed: %s", rsp.SubCode)
 	}

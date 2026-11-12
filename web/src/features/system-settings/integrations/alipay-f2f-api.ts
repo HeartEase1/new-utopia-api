@@ -28,12 +28,19 @@ export type AlipayF2FSettings = {
   alipay_public_key_configured: boolean
   revision: string
   from_environment: boolean
+  // '' before the first save; 'database' is the legacy unencrypted storage.
+  key_storage: '' | 'file' | 'encrypted' | 'database'
+  private_key_unavailable: boolean
+  encryption_available: boolean
 }
+
+export type AlipayF2FKeyStorage = 'file' | 'encrypted'
 
 export type AlipayF2FSettingsInput = Pick<
   AlipayF2FSettings,
   'enabled' | 'sandbox' | 'app_id' | 'seller_id' | 'notify_url'
 > & {
+  key_storage: AlipayF2FKeyStorage
   private_key: string
   alipay_public_key: string
   revision: string
