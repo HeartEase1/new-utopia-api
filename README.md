@@ -4,6 +4,8 @@
 
 ## 镜像与部署入口
 
+**支付宝可直接在后台配置，无需密钥文件或支付宝环境变量。** 进入“系统设置 → 计费 → 支付网关 → 支付宝当面付”，填写后保存即可生效。
+
 **本仓库镜像：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`**。默认不固定 digest，GitHub 自动检查和镜像构建通过后更新该标签。
 
 | 你要做什么 | 使用说明 |
@@ -254,7 +256,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-**Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** Use the same [Compose file](docker-compose.yml) for testing; append only the payment variables and read-only key mounts described in the [Alipay guide](ALIPAY.md).
+**Already running the official image? Follow the [production migration guide](MIGRATION.md) first. The clone and initialization steps below are for new installations; update the image in your existing Compose project for an existing site.** Use the same [Compose file](docker-compose.yml) for testing; configure Alipay in the admin payment settings as described in the [Alipay guide](ALIPAY.md). No Alipay environment variables or key mounts are required.
 
 The repository's [Compose configuration](./docker-compose.yml) starts **New API + PostgreSQL + Redis** by default. It also contains examples for MySQL and a separate ClickHouse log database. Compared with official rc.49, the active configuration only changes the application image; optional Alipay settings are commented out in the same file.
 

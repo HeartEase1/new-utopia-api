@@ -248,7 +248,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-**已有官方版本正在运行？先看[生产环境切换教程](MIGRATION.md)。以下 clone 和初始化步骤只用于新建实例；现有站点应在原 Compose 目录中修改镜像。** 测试也使用同一份[官方结构的 Compose](docker-compose.yml)，只需按[支付宝说明](ALIPAY.md)追加支付环境变量和只读密钥挂载。
+**已有官方版本正在运行？先看[生产环境切换教程](MIGRATION.md)。以下 clone 和初始化步骤只用于新建实例；现有站点应在原 Compose 目录中修改镜像。** 测试也使用同一份[官方结构的 Compose](docker-compose.yml)，部署后按[支付宝说明](ALIPAY.md)在后台填写应用 ID、商户 PID 和密钥，无需追加支付宝环境变量或密钥挂载。
 
 仓库的 [Compose 配置](./docker-compose.yml) 默认启动 **New API + PostgreSQL + Redis**，并提供 MySQL 和独立 ClickHouse 日志库的配置示例。与官方 rc.49 相比，运行配置只更换应用镜像；支付宝配置默认注释，需要时在同一文件中启用。
 

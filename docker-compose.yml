@@ -25,9 +25,6 @@ services:
     volumes:
       - ./data:/data
       - ./logs:/app/logs
-#      # Alipay: create both key files first, then uncomment these read-only mounts.
-#      - ./secrets/alipay-app-private.pem:/run/secrets/alipay_app_private_key:ro
-#      - ./secrets/alipay-public.pem:/run/secrets/alipay_public_key:ro
     environment:
       - SQL_DSN=postgresql://root:123456@postgres:5432/new-api # ⚠️ IMPORTANT: Change the password in production!
 #      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api  # Point to the mysql service, uncomment if using MySQL
@@ -36,14 +33,6 @@ services:
 #      - LOG_SQL_CLICKHOUSE_TTL_DAYS=0 # OPTIONAL: ClickHouse log retention days. Unset or 0 disables automatic deletion; set to e.g. 30 to keep 30 days
       - REDIS_CONN_STRING=redis://:123456@redis:6379 # ⚠️ IMPORTANT: Change the password in production!
       - TZ=Asia/Shanghai
-#      # Optional Alipay face-to-face top-ups. See ALIPAY.md for setup.
-#      - ALIPAY_F2F_ENABLED=true
-#      - ALIPAY_F2F_APP_ID=your_app_id
-#      - ALIPAY_F2F_SELLER_ID=your_merchant_pid
-#      - ALIPAY_F2F_NOTIFY_URL=https://your-domain/api/alipay-f2f/notify
-#      - ALIPAY_F2F_PRIVATE_KEY_FILE=/run/secrets/alipay_app_private_key
-#      - ALIPAY_F2F_PUBLIC_KEY_FILE=/run/secrets/alipay_public_key
-#      - ALIPAY_F2F_SANDBOX=false
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
       - NODE_NAME=new-api-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)

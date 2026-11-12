@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -73,13 +74,13 @@ func TestAlipayF2F(t *testing.T) {
 		common.SetDatabaseTypes(oldMainType, oldLogType)
 		common.RedisEnabled, common.BatchUpdateEnabled = oldRedis, oldBatch
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.Log{}, &model.Option{}))
 	// Re-run migration while an existing order is present; this feature adds no schema.
 	user := model.User{Username: "utopia_alipay_test", Status: common.UserStatusEnabled, Group: "default"}
 	require.NoError(t, db.Create(&user).Error)
 	order := model.TopUp{UserId: user.Id, Amount: 2, Money: 10.01, TradeNo: "UTexisting", PaymentMethod: model.PaymentProviderAlipayF2F, PaymentProvider: model.PaymentProviderAlipayF2F, Status: common.TopUpStatusPending}
 	require.NoError(t, order.Insert())
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.Log{}, &model.Option{}))
 	var version string
 	switch dialect {
 	case "mysql", "postgres":
@@ -303,6 +304,122 @@ func TestAlipayF2F(t *testing.T) {
 		_, _, err = badClient.Query(context.Background(), order.TradeNo)
 		require.Error(t, err)
 	})
+	t.Run("admin configuration persists, redacts secrets and applies without restart", func(t *testing.T) {
+		common.OptionMapRWMutex.Lock()
+		oldOptions := common.OptionMap
+		common.OptionMap = map[string]string{"ServerAddress": "https://payments.example"}
+		common.OptionMapRWMutex.Unlock()
+		defer func() {
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap = oldOptions
+			common.OptionMapRWMutex.Unlock()
+		}()
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).Delete(&model.Option{}).Error)
+		// Existing test orders belong to the earlier isolated settlement scenarios.
+		require.NoError(t, db.Model(&model.TopUp{}).Where("payment_provider = ?", model.PaymentProviderAlipayF2F).Update("status", common.TopUpStatusSuccess).Error)
+		cfg := operation_setting.GetPaymentSetting()
+		oldConfig := *cfg
+		defer func() { *cfg = oldConfig }()
+		cfg.ComplianceConfirmed, cfg.ComplianceTermsVersion = true, operation_setting.CurrentComplianceTermsVersion
+		settingsRouter := gin.New()
+		settingsRouter.GET("/settings", GetAlipayF2FSettings)
+		settingsRouter.PUT("/settings", SaveAlipayF2FSettings)
+		settingsRouter.GET("/options", GetOptions)
+		settingsRouter.PUT("/options", UpdateOption)
+		settingsRouter.GET("/protected", middleware.RootAuth(), GetAlipayF2FSettings)
+		send := func(method, path string, value any) *httptest.ResponseRecorder {
+			encoded, err := common.Marshal(value)
+			require.NoError(t, err)
+			request := httptest.NewRequest(method, path, bytes.NewReader(encoded))
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			settingsRouter.ServeHTTP(w, request)
+			return w
+		}
+		response := send(http.MethodGet, "/settings", nil)
+		var initial struct {
+			Data struct {
+				Revision  string `json:"revision"`
+				NotifyURL string `json:"notify_url"`
+			} `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &initial))
+		assert.Equal(t, "https://payments.example/api/alipay-f2f/notify", initial.Data.NotifyURL)
+		assert.Equal(t, http.StatusUnauthorized, send(http.MethodGet, "/protected", nil).Code)
+		request := alipayF2FSettingsRequest{AlipayF2FConfig: service.AlipayF2FConfig{Enabled: true, AppID: "app-test", SellerID: "seller-test", NotifyURL: initial.Data.NotifyURL, PrivateKey: private, AlipayPublicKey: public}, Revision: initial.Data.Revision}
+		response = send(http.MethodPut, "/settings", request)
+		require.Contains(t, response.Body.String(), `"success":true`)
+		assert.NotContains(t, response.Body.String(), "PRIVATE KEY")
+		assert.NotContains(t, response.Body.String(), "PUBLIC KEY")
+		live, err := service.GetAlipayF2F()
+		require.NoError(t, err)
+		assert.True(t, live.Enabled)
+		var persisted model.Option
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		assert.Contains(t, persisted.Value, "PRIVATE KEY")
+		assert.NotContains(t, send(http.MethodGet, "/settings", nil).Body.String(), "PRIVATE KEY")
+		assert.NotContains(t, send(http.MethodGet, "/options", nil).Body.String(), model.AlipayF2FOptionKey)
+		assert.Contains(t, send(http.MethodPut, "/options", OptionUpdateRequest{Key: model.AlipayF2FOptionKey, Value: "{}"}).Body.String(), `"success":false`)
+		require.Error(t, model.UpdateOptionsBulk(map[string]string{model.AlipayF2FOptionKey: "{}"}))
+		// Stale clients cannot overwrite a newer configuration.
+		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":false`)
+		request.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(persisted.Value)))
+		request.PrivateKey, request.AlipayPublicKey = "", ""
+		request.Enabled = false
+		require.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":true`)
+		live, err = service.GetAlipayF2F()
+		require.NoError(t, err)
+		assert.False(t, live.Enabled)
+		// Disabled new payments still have valid verification keys for old callbacks.
+		values := form()
+		sign(values)
+		require.NoError(t, live.VerifyNotification(context.Background(), values))
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		var stored service.AlipayF2FConfig
+		require.NoError(t, common.UnmarshalJsonStr(persisted.Value, &stored))
+		assert.Equal(t, strings.TrimSpace(private), stored.PrivateKey)
+		assert.Equal(t, strings.TrimSpace(public), stored.AlipayPublicKey)
+		request.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(persisted.Value)))
+		before := persisted.Value
+		request.PrivateKey = "invalid-key"
+		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":false`)
+		request.PrivateKey = ""
+		request.NotifyURL = "http://payments.example/api/alipay-f2f/notify"
+		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":false`)
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		assert.Equal(t, before, persisted.Value)
+		// Changing merchant/environment with a pending order is rejected atomically.
+		require.NoError(t, db.Model(&model.TopUp{}).Where("id = ?", order.Id).Update("status", common.TopUpStatusPending).Error)
+		request.NotifyURL, request.SellerID = stored.NotifyURL, "another-seller"
+		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), "Settle pending Alipay orders")
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
+		assert.Equal(t, before, persisted.Value)
+		// Legacy mounted-file configuration can be imported with blank key inputs.
+		keyDir := t.TempDir()
+		privatePath, publicPath := filepath.Join(keyDir, "private.pem"), filepath.Join(keyDir, "public.pem")
+		require.NoError(t, os.WriteFile(privatePath, []byte(private), 0600))
+		require.NoError(t, os.WriteFile(publicPath, []byte(public), 0600))
+		for name, value := range map[string]string{"ALIPAY_F2F_APP_ID": "app-test", "ALIPAY_F2F_SELLER_ID": "seller-test", "ALIPAY_F2F_NOTIFY_URL": stored.NotifyURL, "ALIPAY_F2F_PRIVATE_KEY_FILE": privatePath, "ALIPAY_F2F_PUBLIC_KEY_FILE": publicPath, "ALIPAY_F2F_ENABLED": "false"} {
+			t.Setenv(name, value)
+		}
+		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).Delete(&model.Option{}).Error)
+		common.OptionMapRWMutex.Lock()
+		delete(common.OptionMap, model.AlipayF2FOptionKey)
+		common.OptionMapRWMutex.Unlock()
+		live, err = service.GetAlipayF2F()
+		require.NoError(t, err)
+		assert.False(t, live.Enabled)
+		assert.Contains(t, send(http.MethodGet, "/settings", nil).Body.String(), `"from_environment":true`)
+		request.SellerID, request.Revision = "seller-test", fmt.Sprintf("%x", sha256.Sum256(nil))
+		require.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":true`)
+		t.Setenv("ALIPAY_F2F_ENABLED", "true")
+		t.Setenv("ALIPAY_F2F_PRIVATE_KEY_FILE", "missing-file")
+		live, err = service.GetAlipayF2F()
+		require.NoError(t, err)
+		assert.False(t, live.Enabled, "database disable must override old environment settings")
+
+	})
+
 	// Verify malformed JSON does not create an order.
 	before := int64(0)
 	require.NoError(t, db.Model(&model.TopUp{}).Count(&before).Error)

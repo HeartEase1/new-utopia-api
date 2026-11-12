@@ -25,7 +25,8 @@ func isAlipayF2FTopUpEnabled() bool {
 }
 
 func RequestAlipayF2F(c *gin.Context) {
-	if !isAlipayF2FTopUpEnabled() {
+	client, err := getAlipayF2F()
+	if err != nil || !client.Enabled || !isPaymentComplianceConfirmed() {
 		paymentError(c, common.NewMessage("Payment information has not been configured by administrator"))
 		return
 	}
@@ -66,7 +67,6 @@ func RequestAlipayF2F(c *gin.Context) {
 		paymentError(c, common.NewMessage("Failed to create order"))
 		return
 	}
-	client, _ := getAlipayF2F()
 	qrCode, err := client.Precreate(c.Request.Context(), order.TradeNo, amountText)
 	if err != nil {
 		// A timeout is ambiguous: keep pending so a delayed payment can settle.

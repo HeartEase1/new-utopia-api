@@ -11,46 +11,122 @@ import (
 	"sync"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/shopspring/decimal"
 	"github.com/smartwalle/alipay/v3"
 )
 
-// AlipayF2F uses public-key mode. Secrets are read from mounted files, never
-// returned by the options API. Restart after changing credentials.
+// AlipayF2F uses Alipay's RSA2 public-key mode.
 type AlipayF2F struct {
 	Client                     *alipay.Client
 	AppID, SellerID, NotifyURL string
 	Enabled                    bool
 }
 
-var loadAlipayF2F = sync.OnceValues(func() (*AlipayF2F, error) {
-	appID := strings.TrimSpace(os.Getenv("ALIPAY_F2F_APP_ID"))
-	sellerID := strings.TrimSpace(os.Getenv("ALIPAY_F2F_SELLER_ID"))
-	notifyURL := strings.TrimSpace(os.Getenv("ALIPAY_F2F_NOTIFY_URL"))
+// AlipayF2FConfig is persisted as one protected option. PrivateKey and
+// AlipayPublicKey are intentionally omitted from the admin GET response.
+type AlipayF2FConfig struct {
+	Enabled         bool   `json:"enabled"`
+	Sandbox         bool   `json:"sandbox"`
+	AppID           string `json:"app_id"`
+	SellerID        string `json:"seller_id"`
+	NotifyURL       string `json:"notify_url"`
+	PrivateKey      string `json:"private_key"`
+	AlipayPublicKey string `json:"alipay_public_key"`
+}
+
+var alipayF2FState struct {
+	sync.Mutex
+	fingerprint string
+	client      *AlipayF2F
+	err         error
+}
+
+func ValidateAlipayF2FConfig(config AlipayF2FConfig) (*AlipayF2F, error) {
+	appID := strings.TrimSpace(config.AppID)
+	sellerID := strings.TrimSpace(config.SellerID)
+	notifyURL := strings.TrimSpace(config.NotifyURL)
 	u, err := url.Parse(notifyURL)
 	if appID == "" || sellerID == "" || err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "/api/alipay-f2f/notify" {
 		return nil, errors.New("Alipay F2F requires app ID, seller ID and an HTTPS notification URL ending in /api/alipay-f2f/notify")
 	}
-	privateKey, err := os.ReadFile(os.Getenv("ALIPAY_F2F_PRIVATE_KEY_FILE"))
-	if err != nil {
-		return nil, errors.New("cannot read Alipay F2F private key file")
+	privateKey := []byte(config.PrivateKey)
+	publicKey := []byte(config.AlipayPublicKey)
+	if len(privateKey) == 0 || len(publicKey) == 0 {
+		return nil, errors.New("Alipay F2F private key and Alipay public key are required")
 	}
-	publicKey, err := os.ReadFile(os.Getenv("ALIPAY_F2F_PUBLIC_KEY_FILE"))
-	if err != nil {
-		return nil, errors.New("cannot read Alipay F2F public key file")
+	options := []alipay.OptionFunc{alipay.WithHTTPClient(&http.Client{Timeout: 15 * time.Second})}
+	if config.Sandbox {
+		options = append(options, alipay.WithNewSandboxGateway())
 	}
-	client, err := alipay.New(appID, string(privateKey), os.Getenv("ALIPAY_F2F_SANDBOX") != "true",
-		alipay.WithHTTPClient(&http.Client{Timeout: 15 * time.Second}), alipay.WithNewSandboxGateway())
+	client, err := alipay.New(appID, string(privateKey), !config.Sandbox, options...)
 	if err != nil {
 		return nil, errors.New("invalid Alipay F2F private key")
 	}
 	if err := client.LoadAliPayPublicKey(string(publicKey)); err != nil {
-		return nil, errors.New("invalid Alipay F2F public key")
+		return nil, errors.New("invalid Alipay public key")
 	}
-	return &AlipayF2F{Client: client, AppID: appID, SellerID: sellerID, NotifyURL: notifyURL, Enabled: os.Getenv("ALIPAY_F2F_ENABLED") == "true"}, nil
-})
+	return &AlipayF2F{Client: client, AppID: appID, SellerID: sellerID, NotifyURL: notifyURL, Enabled: config.Enabled}, nil
+}
 
-func GetAlipayF2F() (*AlipayF2F, error) { return loadAlipayF2F() }
+func envAlipayF2FConfig() (AlipayF2FConfig, error) {
+	config := AlipayF2FConfig{
+		Enabled: os.Getenv("ALIPAY_F2F_ENABLED") == "true", Sandbox: os.Getenv("ALIPAY_F2F_SANDBOX") == "true",
+		AppID: os.Getenv("ALIPAY_F2F_APP_ID"), SellerID: os.Getenv("ALIPAY_F2F_SELLER_ID"), NotifyURL: os.Getenv("ALIPAY_F2F_NOTIFY_URL"),
+	}
+	readFile := func(name string) (string, error) {
+		contents, err := os.ReadFile(name)
+		if err != nil {
+			return "", errors.New("cannot read Alipay F2F key file")
+		}
+		return string(contents), nil
+	}
+	var err error
+	config.PrivateKey, err = readFile(os.Getenv("ALIPAY_F2F_PRIVATE_KEY_FILE"))
+	if err != nil {
+		return config, err
+	}
+	config.AlipayPublicKey, err = readFile(os.Getenv("ALIPAY_F2F_PUBLIC_KEY_FILE"))
+	return config, err
+}
+
+// LoadAlipayF2FConfig reads the single persisted snapshot. An empty database
+// option selects the legacy environment/file configuration.
+func LoadAlipayF2FConfig() (config AlipayF2FConfig, raw string, err error) {
+	common.OptionMapRWMutex.RLock()
+	encoded := common.OptionMap[model.AlipayF2FOptionKey]
+	common.OptionMapRWMutex.RUnlock()
+	if strings.TrimSpace(encoded) == "" {
+		config, err := envAlipayF2FConfig()
+		return config, "", err
+	}
+	if err := common.UnmarshalJsonStr(encoded, &config); err != nil {
+		return config, encoded, errors.New("invalid persisted Alipay F2F configuration")
+	}
+	return config, encoded, nil
+}
+
+// GetAlipayF2F returns the current effective configuration. It rebuilds the
+// SDK client only when the persisted option or environment fallback changes.
+func GetAlipayF2F() (*AlipayF2F, error) {
+	config, _, err := LoadAlipayF2FConfig()
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := common.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	alipayF2FState.Lock()
+	defer alipayF2FState.Unlock()
+	if string(encoded) == alipayF2FState.fingerprint {
+		return alipayF2FState.client, alipayF2FState.err
+	}
+	alipayF2FState.fingerprint = string(encoded)
+	alipayF2FState.client, alipayF2FState.err = ValidateAlipayF2FConfig(config)
+	return alipayF2FState.client, alipayF2FState.err
+}
 
 // AlipayAmount parses protocol amounts without float comparison or rounding a
 // mismatched payment into a match. total_amount includes discounts paid by Alipay.

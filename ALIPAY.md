@@ -10,20 +10,26 @@
 ## 配置
 
 支付宝应用必须已开通当面付，并使用 **RSA2 公钥模式**。本版不支持证书模式。
-应用私钥与支付宝公钥放在服务器本地文件；支付宝公钥不是应用公钥。
-不要把私钥提交到 Git 或发到聊天中。`secrets/` 已加入忽略规则。
+进入 **系统设置 → 计费 → 支付网关 → 支付宝当面付**，直接填写：
 
-| 环境变量 | 用途 |
+| 后台字段 | 填写内容 |
 | --- | --- |
-| `ALIPAY_F2F_ENABLED=true` | 开启新充值入口，默认关闭 |
-| `ALIPAY_F2F_APP_ID` | 支付宝应用 ID |
-| `ALIPAY_F2F_SELLER_ID` | 收款商户 PID，用于回调核对 |
-| `ALIPAY_F2F_NOTIFY_URL` | `https://你的域名/api/alipay-f2f/notify` |
-| `ALIPAY_F2F_PRIVATE_KEY_FILE` | 容器内应用私钥文件路径 |
-| `ALIPAY_F2F_PUBLIC_KEY_FILE` | 容器内支付宝公钥文件路径 |
-| `ALIPAY_F2F_SANDBOX=true` | 使用支付宝沙箱；默认正式环境 |
+| 支付宝应用 ID | 已开通当面付的应用 ID |
+| 商户 PID | 实际收款支付宝商户的 PID |
+| 应用私钥 | 开发者生成的 RSA2 应用私钥，支持 PEM 或支付宝工具生成的 Base64 内容 |
+| 支付宝公钥 | 支付宝开放平台提供的支付宝公钥，**不是应用公钥** |
+| 支付回调地址 | 按站点地址预填，可修改为 `https://你的域名/api/alipay-f2f/notify` |
+| 支付宝沙箱 | 真实收款关闭；沙箱测试开启并使用沙箱凭据 |
+| 开启支付宝当面付充值 | 控制新下单，关闭后仍可处理已有订单回调与查单 |
 
-配置在进程中缓存，修改后需重建应用容器。回调地址必须可从公网访问，反向代理不能对它增加登录、验证码或缓存。
+点击“保存支付宝设置”后立即生效，无需重启容器。再次进入时密钥不回显；密钥输入留空表示保留原值。配置会随现有数据库持久保存，更新镜像或重建容器后继续有效。
+
+“检查连接”仅查询随机生成的不存在订单，验证网关、应用凭据及响应验签，不会创建支付或扣款，也不会自动保存表单。商户 PID 和公网回调仍需小额支付验收。并发修改配置时，旧页面的保存会被拒绝，请刷新后重试。切换商户/正式沙箱环境前必须先关闭新充值并核清待处理订单。
+
+回调地址必须可从公网访问，反向代理不能对它增加登录、验证码或缓存；在支付宝开放平台需要填写异步通知地址的位置使用同一地址。
+
+后台密钥仅通过 root 管理接口提交，不放入浏览器持久存储，不在配置读取响应或操作审计中返回。与现有支付网关设置一样，密钥保存在数据库配置表中，**不是应用层加密存储**；使用 HTTPS 管理后台，并保护数据库、数据库备份和管理员账号。需要将密钥独立于数据库管理时，仍可使用下文的旧环境变量方式。
+
 后台仍需完成原版支付合规确认，并配置充值最低额度、价格与折扣。当面付实付币种固定为人民币；充值额度与原版易支付的换算一致。
 手机在支付弹窗中点击“打开支付宝”；浏览器限制唤起时使用系统浏览器或扫码备用流程，不保证所有内置浏览器均能直接唤起。
 
@@ -37,7 +43,7 @@
 
 ## 在独立服务器用 Docker Compose 测试
 
-测试服务器也使用仓库根目录的 `docker-compose.yml`，与官方 rc.49 保持相同的服务、端口、数据卷和网络结构：**New API + PostgreSQL + Redis**。二开只更换应用镜像，额外提供默认注释的支付宝环境变量和只读密钥挂载。
+测试服务器也使用仓库根目录的 `docker-compose.yml`，与官方 rc.49 保持相同的服务、端口、数据卷和网络结构：**New API + PostgreSQL + Redis**。二开默认 Compose 只更换应用镜像，支付宝在后台配置。
 
 测试请放在另一台服务器，使用独立数据库和测试域名，不连接生产数据库。若线上使用 MySQL/SQLite，测试时也应采用同类型数据库的隔离副本。
 
@@ -46,8 +52,6 @@
 ```sh
 git clone https://github.com/HeartEase1/new-utopia-api.git
 cd new-utopia-api
-mkdir -p secrets
-chmod 700 secrets
 ```
 
 编辑根目录 `docker-compose.yml`，按官方部署方式设置数据库与 Redis 密码（服务端和连接串同时修改）、持久的随机 `SESSION_SECRET`。用 `openssl rand -hex 32` 生成随机值，替换示例值。保留官方服务结构，无需额外的测试 Compose 或覆盖文件。
@@ -64,43 +68,11 @@ docker compose logs --tail=100 new-api
 
 通过 HTTPS 控制台访问时，取消官方模板中 `SESSION_COOKIE_SECURE` 和 `SESSION_COOKIE_TRUSTED_URL` 两行的注释，设置为 `true` 和实际测试站点的 HTTPS Origin。反向代理在容器内时通过共享 Docker 网络访问应用，不能用代理容器的 `127.0.0.1`。
 
-### 2. 只追加支付宝配置
+### 2. 在后台配置支付宝
 
-将应用私钥保存为 `secrets/alipay-app-private.pem`，支付宝公钥保存为 `secrets/alipay-public.pem`：
+登录测试站管理员，在支付网关页面完成合规确认，并配置充值价格、最低额度和折扣。打开“支付宝当面付”标签，按[配置](#配置)填写测试站对应的应用、商户、密钥和 HTTPS 回调地址，先关闭新充值保存。检查连接通过后再开启并保存。
 
-```sh
-chmod 600 secrets/*.pem
-```
-
-编辑**同一份** `docker-compose.yml`，在 `new-api` 原有的 `volumes` 和 `environment` 中取消支付宝配置行的注释，填写你的真实值。下面是需要新增的片段，不能覆盖完整文件或原有字段：
-
-```yaml
-services:
-  new-api:
-    image: ghcr.io/heartease1/new-utopia-api:rc49-alipay
-    volumes:
-      # 保留原来的数据、日志挂载，仅追加下面两行。
-      - ./secrets/alipay-app-private.pem:/run/secrets/alipay_app_private_key:ro
-      - ./secrets/alipay-public.pem:/run/secrets/alipay_public_key:ro
-    environment:
-      # 保留原来的 SQL_DSN、REDIS_CONN_STRING 等变量，仅追加下面各行。
-      - ALIPAY_F2F_ENABLED=false
-      - ALIPAY_F2F_APP_ID=你的应用ID
-      - ALIPAY_F2F_SELLER_ID=你的商户PID
-      - ALIPAY_F2F_NOTIFY_URL=https://你的测试域名/api/alipay-f2f/notify
-      - ALIPAY_F2F_PRIVATE_KEY_FILE=/run/secrets/alipay_app_private_key
-      - ALIPAY_F2F_PUBLIC_KEY_FILE=/run/secrets/alipay_public_key
-      - ALIPAY_F2F_SANDBOX=false
-```
-
-密钥文件必须先创建为普通文件再启动容器。后台完成支付合规确认、充值价格和最低额度配置，确保回调 POST 可以从公网访问，再把 `ALIPAY_F2F_ENABLED` 改为 `true`：
-
-```sh
-docker compose config --quiet
-docker compose up -d --no-deps new-api
-```
-
-`up -d` 会应用环境变量和挂载更新；单纯 `restart` 不会重新加载 Compose 配置。`SANDBOX=false` 表示真实收款；沙箱模式必须搭配沙箱应用和密钥，不能混用正式凭据。
+不需要修改 Compose，不需要创建 `secrets/` 目录或上传密钥文件。沙箱开启表示模拟测试；关闭沙箱表示真实收款。
 
 ### 3. 观察一天
 
@@ -112,7 +84,7 @@ docker compose up -d --no-deps new-api
 2. 付款后关闭支付弹窗，确认异步回调仍能到账；刷新后从充值历史查单，余额只增加一次。
 3. 未付款订单不加余额；二维码过期后仍可手动查单。
 4. 重建应用容器后，用户、订单和余额保留，已支付订单可继续查询。
-5. 将 `ALIPAY_F2F_ENABLED=false` 并重建应用，确认不再创建新订单，已有订单仍能查单/处理回调。
+5. 在后台关闭当面付新充值并保存，确认不再创建新订单，已有订单仍能查单/处理回调。
 6. 测试正常 API 调用、流式响应、充值后的余额扣费，以及后台日常操作。
 
 这是一份人工验收流程，不表示上述真实商户与手机测试已完成。测试中产生的真实支付宝交易仍是真实收款，退款需在支付宝侧处理，本版没有站内退款接口。
@@ -124,8 +96,8 @@ docker compose up -d --no-deps new-api
 **上线同步的是镜像和必要配置，不是测试数据库。不要把测试用户、订单或余额覆盖到生产。**
 
 1. 记录测试和线上当前镜像，备份线上数据库、Compose、环境变量及数据文件，验证备份可恢复。
-2. 在原生产 Compose 所在目录，按上面的配置片段追加支付宝环境变量与只读密钥挂载。保留原数据库、Redis、端口、数据卷、项目名和全部现有环境配置，不用仓库模板覆盖生产文件。
-3. 将原应用服务的 `image` 改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`。设置生产 `ALIPAY_F2F_NOTIFY_URL=https://正式域名/api/alipay-f2f/notify`，先保持 `ALIPAY_F2F_ENABLED=false`。密钥文件必须在生产服务器重新放置到对应路径。
+2. 在原生产 Compose 所在目录，保留原数据库、Redis、端口、数据卷、项目名和全部现有环境配置，不用仓库模板覆盖生产文件。
+3. 将原应用服务的 `image` 改为 `ghcr.io/heartease1/new-utopia-api:rc49-alipay`，启动后在生产后台填写支付宝设置，回调使用正式 HTTPS 域名，先保持新充值关闭。
 4. 在生产 Compose 目录执行（服务名示例为 `new-api`，以实际名称为准）：
 
 ```sh
@@ -136,7 +108,7 @@ docker compose ps
 docker compose logs --tail=100 new-api
 ```
 
-5. 确认原用户、余额、API 调用正常后开启当面付，重建应用并做一次生产小额支付，确认真实回调和入账。
+5. 确认原用户、余额、API 调用正常后，在后台开启当面付并保存，做一次生产小额支付，确认真实回调和入账。
 
 只使用原项目的 Compose 配置。若你之前使用了 `UTOPIA_IMAGE` 或 digest 写法，将应用 `image` 直接改为上面的地址即可，其他已有环境变量保留。
 
@@ -166,9 +138,15 @@ docker compose logs --tail=100 new-api
 - 页面每 5 秒查单；错误或二维码超时后停止自动查询，可以手动重试。
 - 普通用户可在充值历史中对待支付的当面付订单点击“查询支付状态”，恢复刷新或关闭页面前的订单。
 - 关闭弹窗和本地二维码超时不会把数据库订单强制判为失败，避免遗漏延迟通知。
-- `ALIPAY_F2F_ENABLED=false` 只关闭新下单，保留完整凭据时仍处理已付款回调和查单。
+- 后台关闭新充值只停止新下单，保留完整凭据时仍处理已付款回调和查单。
 - 本版不修改数据库结构。回退官方镜像前必须关闭新下单，核清/处理所有支付宝待支付订单；官方版本无法处理这些回调。不要在有新交易后直接恢复旧备份。
 - 未完成订单处理完毕前，不要更换应用、收款账号、沙箱模式或密钥配置。
+
+## 兼容旧环境变量配置
+
+已经用环境变量和密钥文件配置过的实例可继续运行，无需立即迁移。尚未在后台保存时读取 `ALIPAY_F2F_ENABLED`、`ALIPAY_F2F_APP_ID`、`ALIPAY_F2F_SELLER_ID`、`ALIPAY_F2F_NOTIFY_URL`、`ALIPAY_F2F_PRIVATE_KEY_FILE`、`ALIPAY_F2F_PUBLIC_KEY_FILE`、`ALIPAY_F2F_SANDBOX`。
+
+后台会显示旧配置和密钥配置状态；密钥留空保存即可将完整配置存到数据库，此后后台配置优先，包括关闭状态，不会被旧环境变量重新开启。确认保存后再移除原支付宝变量和密钥挂载。只使用环境变量模式时，修改 Compose 后仍需 `docker compose up -d --no-deps new-api` 应用。
 
 ## 验证范围
 

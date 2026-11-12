@@ -189,6 +189,10 @@ func UpdateOption(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
 	}
+	if option.Key == model.AlipayF2FOptionKey {
+		common.ApiErrorT(c, "Use the Alipay settings page to update this configuration.")
+		return
+	}
 	switch option.Value.(type) {
 	case bool:
 		option.Value = common.Interface2String(option.Value.(bool))
