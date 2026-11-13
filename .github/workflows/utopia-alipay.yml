@@ -67,6 +67,7 @@ jobs:
         run: |
           go test ./model ./service ./relay/... ./pkg/billingexpr/... ./pkg/jsplugin/... ./plugins/... ./router/... ./setting/... ./common/... -count=1
           go test ./controller -run 'Plugin|Sensitive|SystemTask|Epay' -count=1
+          go test ./middleware -run 'AccessToken|Alipay|SessionCookieOrigin' -count=1
           (cd relaykit && GOWORK=off go build ./...)
           (cd tokenkit && GOWORK=off go build ./...)
   frontend:

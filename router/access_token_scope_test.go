@@ -56,6 +56,7 @@ var accessTokenExemptRoutes = []string{
 	"POST /api/user/auth/logout",
 
 	// Payment callbacks.
+	"POST /api/alipay-f2f/notify",
 	"POST /api/stripe/webhook",
 	"POST /api/creem/webhook",
 	"POST /api/waffo/webhook",
@@ -126,6 +127,18 @@ func TestAccessTokenRouteRulesCoverEveryDashboardRoute(t *testing.T) {
 	}
 	for key := range declared {
 		assert.True(t, panel[key], "declared route %s is not a registered panel route", key)
+	}
+	for _, key := range []string{
+		"POST /api/user/alipay-f2f/pay",
+		"POST /api/user/alipay-f2f/query",
+		"POST /api/user/alipay-f2f/cancel",
+		"GET /api/option/alipay-f2f",
+		"PUT /api/option/alipay-f2f",
+		"POST /api/option/alipay-f2f/check",
+	} {
+		rule, ok := middleware.AccessTokenRouteRule(key)
+		require.True(t, ok, key)
+		assert.Equal(t, "session", rule.Kind(), key)
 	}
 
 	permissionRoutes := map[string]authz.Permission{}
