@@ -1041,7 +1041,7 @@ func TestAlipayF2F(t *testing.T) {
 			}
 		}
 		for i, provider := range providers {
-			order := model.TopUp{UserId: invited.Id, Amount: 1, Money: 1, QuotaSnapshot: 500000, TradeNo: "referral-" + provider, PaymentMethod: provider, PaymentProvider: provider, Status: common.TopUpStatusPending}
+			order := model.TopUp{UserId: invited.Id, Amount: 1, Money: 1, QuotaSnapshot: 500000, TradeNo: "referral-" + provider, PaymentMethod: provider, PaymentProvider: provider, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}
 			if provider == model.PaymentProviderCreem {
 				order.Amount = 500000
 			}
@@ -1055,6 +1055,66 @@ func TestAlipayF2F(t *testing.T) {
 			assert.Equal(t, inviter.Id, order.ReferralUserID)
 			assert.EqualValues(t, 62500, order.ReferralQuota)
 		}
+		t.Run("admin history exposes recorded rebates while self history stays private", func(t *testing.T) {
+			require.NoError(t, db.AutoMigrate(&model.UserSession{}))
+			admin := model.User{Username: "referral_history_admin", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "history-admin"}
+			require.NoError(t, db.Create(&admin).Error)
+			adminSession, err := service.CreateLoginSession(admin.Id, "password", "127.0.0.1", "history-test")
+			require.NoError(t, err)
+			userSession, err := service.CreateLoginSession(invited.Id, "password", "127.0.0.1", "history-test")
+			require.NoError(t, err)
+			router := gin.New()
+			router.GET("/api/user/topup", middleware.AdminAuth(), GetAllTopUps)
+			router.GET("/api/user/topup/self", middleware.UserAuth(), GetUserTopUps)
+			for _, path := range []string{"/api/user/topup?page_size=100", "/api/user/topup?keyword=referral-alipay_f2f"} {
+				request := httptest.NewRequest(http.MethodGet, path, nil)
+				request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				require.Equal(t, http.StatusOK, response.Code)
+				var body struct {
+					Success bool `json:"success"`
+					Data    struct {
+						Items []map[string]any `json:"items"`
+					} `json:"data"`
+				}
+				require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+				require.True(t, body.Success)
+				found := false
+				for _, item := range body.Data.Items {
+					if item["trade_no"] != "referral-alipay_f2f" {
+						continue
+					}
+					found = true
+					assert.EqualValues(t, invited.Id, item["user_id"])
+					assert.EqualValues(t, 1, item["money"])
+					assert.EqualValues(t, inviter.Id, item["referral_user_id"])
+					assert.EqualValues(t, 62500, item["referral_quota"])
+					assert.NotContains(t, item, "quota_snapshot")
+				}
+				assert.True(t, found, "recorded order must be present in %s", path)
+			}
+			for _, path := range []string{"/api/user/topup/self", "/api/user/topup/self?keyword=referral-alipay_f2f"} {
+				request := httptest.NewRequest(http.MethodGet, path, nil)
+				request.Header.Set("Authorization", "Bearer "+userSession.AccessToken)
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				require.Equal(t, http.StatusOK, response.Code)
+				assert.Contains(t, response.Body.String(), "referral-alipay_f2f")
+				assert.NotContains(t, response.Body.String(), "referral_user_id")
+				assert.NotContains(t, response.Body.String(), "referral_quota")
+			}
+			for _, token := range []string{"", userSession.AccessToken} {
+				request := httptest.NewRequest(http.MethodGet, "/api/user/topup", nil)
+				if token != "" {
+					request.Header.Set("Authorization", "Bearer "+token)
+				}
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				assert.Contains(t, []int{http.StatusUnauthorized, http.StatusForbidden}, response.Code)
+				assert.NotContains(t, response.Body.String(), "referral_quota")
+			}
+		})
 		// A repeated manual completion cannot add a second rebate either.
 		require.NoError(t, model.ManualCompleteTopUp("referral-alipay_f2f", ""))
 		starting := inviter.AffQuota

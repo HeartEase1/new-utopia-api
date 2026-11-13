@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Search, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
 import {
@@ -44,8 +45,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { formatCurrencyFromUSD } from '@/lib/currency'
+import { formatCurrencyFromUSD, formatQuotaWithCurrency } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 
 import type { AlipayF2FOrder } from '../../api'
@@ -86,7 +86,6 @@ export function BillingHistoryDialog({
   const [alipayOrder, setAlipayOrder] = useState<AlipayF2FOrder | null>(null)
 
   const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
-  const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -105,9 +104,13 @@ export function BillingHistoryDialog({
         open={open}
         onOpenChange={onOpenChange}
         title={t('Billing History')}
-        description={t(
-          'View your topup transaction records and payment history'
-        )}
+        description={
+          isAdmin
+            ? t(
+                'Review top-up payments and recorded referral rebates for each order.'
+              )
+            : t('View your topup transaction records and payment history')
+        }
         contentClassName='flex max-h-(--dialog-available-height) flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-4xl'
         contentHeight='auto'
         bodyClassName='space-y-3'
@@ -205,18 +208,13 @@ export function BillingHistoryDialog({
                             <code className='text-foreground truncate font-mono text-sm'>
                               {record.trade_no}
                             </code>
-                            <Button
+                            <CopyButton
+                              value={record.trade_no}
                               variant='ghost'
                               size='sm'
                               className='h-5 w-5 p-0'
-                              onClick={() => copyToClipboard(record.trade_no)}
-                            >
-                              {copiedText === record.trade_no ? (
-                                <Check className='h-3 w-3' />
-                              ) : (
-                                <Copy className='h-3 w-3' />
-                              )}
-                            </Button>
+                              iconClassName='h-3 w-3'
+                            />
                             {isAdmin && record.user_id != null && (
                               <StatusBadge
                                 label={`${t('User ID')}: ${record.user_id}`}
@@ -269,6 +267,61 @@ export function BillingHistoryDialog({
                           </div>
                         </div>
                       </div>
+
+                      {isAdmin && record.status === 'success' && (
+                        <div className='mt-3 space-y-2 border-t pt-3'>
+                          <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4'>
+                            <div className='min-w-0 space-y-1'>
+                              <div className='text-muted-foreground text-xs'>
+                                {t('Rebate recipient')}
+                              </div>
+                              {(record.referral_user_id ?? 0) > 0 &&
+                              (record.referral_quota ?? 0) > 0 ? (
+                                <StatusBadge
+                                  label={`${t('User ID')}: ${record.referral_user_id}`}
+                                  variant='neutral'
+                                  size='sm'
+                                  copyText={String(record.referral_user_id)}
+                                />
+                              ) : (
+                                <p className='text-muted-foreground text-sm'>
+                                  {t('No rebate recorded')}
+                                </p>
+                              )}
+                            </div>
+                            <div className='min-w-0 space-y-1'>
+                              <div className='text-muted-foreground text-xs'>
+                                {t('Referral rebate')}
+                              </div>
+                              <div className='text-sm font-semibold break-all tabular-nums'>
+                                {formatQuotaWithCurrency(
+                                  record.referral_quota ?? 0,
+                                  {
+                                    digitsLarge: 6,
+                                    digitsSmall: 6,
+                                    abbreviate: false,
+                                  }
+                                )}
+                              </div>
+                            </div>
+                            {!!record.complete_time && (
+                              <div className='col-span-2 space-y-1 sm:col-span-1'>
+                                <div className='text-muted-foreground text-xs'>
+                                  {t('Completion Time')}
+                                </div>
+                                <div className='text-sm'>
+                                  {formatTimestamp(record.complete_time)}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <p className='text-muted-foreground text-xs'>
+                            {t(
+                              'Rebates are wallet credits added to the inviter’s referral earnings.'
+                            )}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Admin Actions */}
                       {!isAdmin &&

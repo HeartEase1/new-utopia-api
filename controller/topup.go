@@ -567,6 +567,13 @@ func GetUserTopUps(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+// Keep referral details out of the shared TopUp JSON used by self-service APIs.
+type adminTopUpRecord struct {
+	*model.TopUp
+	ReferralUserID int   `json:"referral_user_id"`
+	ReferralQuota  int64 `json:"referral_quota"`
+}
+
 // GetAllTopUps 管理员获取全平台充值记录
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
@@ -588,7 +595,13 @@ func GetAllTopUps(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(topups)
+	records := make([]adminTopUpRecord, 0, len(topups))
+	for _, topup := range topups {
+		records = append(records, adminTopUpRecord{
+			TopUp: topup, ReferralUserID: topup.ReferralUserID, ReferralQuota: topup.ReferralQuota,
+		})
+	}
+	pageInfo.SetItems(records)
 	common.ApiSuccess(c, pageInfo)
 }
 

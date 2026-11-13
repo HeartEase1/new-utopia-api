@@ -272,6 +272,9 @@ export interface TopupRecord {
   complete_time?: number
   /** Payment status */
   status: TopupStatus
+  /** Actual recorded referral recipient and wallet units; admin API only. */
+  referral_user_id?: number
+  referral_quota?: number
 }
 
 /**
