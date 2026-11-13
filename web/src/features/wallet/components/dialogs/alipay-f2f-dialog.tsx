@@ -145,7 +145,8 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
       onOpenChange={(_, details) => details.cancel()}
       title={t('Alipay payment')}
       description={t('Scan with Alipay or open the Alipay app on your phone.')}
-      contentClassName='sm:max-w-md'
+      contentClassName='max-h-[calc(100dvh-1rem)] sm:max-w-md'
+      initialFocus={false}
       footer={
         <Button
           variant='outline'

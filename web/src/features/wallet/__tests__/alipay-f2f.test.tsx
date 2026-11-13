@@ -169,6 +169,18 @@ it('keeps a pending payment uncredited and displays a QR code and app launch but
   expect(onPaid).not.toHaveBeenCalled()
 })
 
+it('keeps the mobile payment dialog focused at the top so the QR code is visible', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { status: 'pending' } },
+  })
+  showDialog()
+
+  expect(
+    screen.getByRole('img', { name: 'Alipay payment QR code' })
+  ).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Cancel' })).not.toHaveFocus()
+})
+
 it('polls every five seconds for two minutes then only queries when requested', async () => {
   vi.useFakeTimers()
   const post = vi.spyOn(api, 'post').mockResolvedValue({

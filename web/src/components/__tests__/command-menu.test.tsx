@@ -142,3 +142,14 @@ test('pages hidden in the sidebar settings stay out of search', async () => {
   expect(entries).not.toContain('Wallet')
   expect(entries).toContain('Profile')
 })
+
+test('pins public navigation links above console pages', async () => {
+  const entries = await searchEntriesFor(ROLE.USER)
+
+  expect(entries.slice(0, 4)).toEqual([
+    'Home',
+    'Model Square',
+    'Rankings',
+    'Docs',
+  ])
+})

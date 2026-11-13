@@ -34,6 +34,7 @@ import {
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
+import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 
 import { ScrollArea } from './ui/scroll-area'
 
@@ -42,6 +43,7 @@ export function CommandMenu() {
   const navigate = useNavigate()
   const { setTheme } = useTheme()
   const { open, setOpen } = useSearch()
+  const topNavLinks = useTopNavLinks()
   // Offer the same pages as the sidebar, so search never lists pages the
   // user's role or the sidebar settings hide.
   const { navGroups } = useSidebarView()
@@ -54,6 +56,20 @@ export function CommandMenu() {
     [setOpen]
   )
 
+  const quickNavigationLinks = topNavLinks.filter(
+    (link) =>
+      ['/', '/pricing', '/rankings'].includes(link.href) ||
+      link.title === t('Docs')
+  )
+
+  const navigateToTopLink = (href: string, external?: boolean) => {
+    if (external) {
+      window.location.assign(href)
+      return
+    }
+    navigate({ to: href })
+  }
+
   return (
     <CommandDialog modal open={open} onOpenChange={setOpen}>
       <Command>
@@ -61,6 +77,30 @@ export function CommandMenu() {
         <CommandList>
           <ScrollArea className='h-72 pe-1'>
             <CommandEmpty>{t('No results found.')}</CommandEmpty>
+            {quickNavigationLinks.length > 0 && (
+              <>
+                <CommandGroup heading={t('Quick links')}>
+                  {quickNavigationLinks.map((link) => (
+                    <CommandItem
+                      key={`${link.title}-${link.href}`}
+                      value={`${link.title} ${link.href}`}
+                      disabled={link.disabled}
+                      onSelect={() => {
+                        runCommand(() =>
+                          navigateToTopLink(link.href, link.external)
+                        )
+                      }}
+                    >
+                      <div className='flex size-4 items-center justify-center'>
+                        <ArrowRight className='text-muted-foreground/80 size-2' />
+                      </div>
+                      {link.title}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                <CommandSeparator />
+              </>
+            )}
             {navGroups.map((group) => (
               <CommandGroup key={group.id || group.title} heading={group.title}>
                 {group.items.map((navItem) => {
