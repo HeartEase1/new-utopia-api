@@ -49,6 +49,7 @@ func SaveAlipayF2FOption(expected, value string, merchantChanged bool) error {
 	if err != nil {
 		return err
 	}
+	BumpSyncTopic(SyncTopicOptions)
 	return updateOptionMap(AlipayF2FOptionKey, value)
 }
 

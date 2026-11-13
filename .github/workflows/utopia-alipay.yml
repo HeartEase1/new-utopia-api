@@ -63,6 +63,12 @@ jobs:
         run: |
           go test ./model -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|Quota|Reserve|Redemption|Redeem|AuthCache|UserAuth' -count=1
           go test ./controller ./service ./middleware -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|RateLimit' -count=1
+      - name: Upstream rc.50 integration regressions
+        run: |
+          go test ./model ./service ./relay/... ./pkg/billingexpr/... ./pkg/jsplugin/... ./plugins/... ./router/... ./setting/... ./common/... -count=1
+          go test ./controller -run 'Plugin|Sensitive|SystemTask|Epay' -count=1
+          (cd relaykit && GOWORK=off go build ./...)
+          (cd tokenkit && GOWORK=off go build ./...)
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -78,11 +84,11 @@ jobs:
           bun-version: '1.4.4'
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun run test src/features/wallet src/features/system-settings/integrations/__tests__/alipay-f2f.test.tsx
+      - run: bun run test src/features/wallet src/features/system-settings/integrations src/features/request-processing src/features/system-info src/features/task-plugins
       - name: Lint modified frontend files
         shell: bash
         run: |
-          mapfile -t files < <(git diff --name-only v1.0.0-rc.49 HEAD -- '*.ts' '*.tsx')
+          mapfile -t files < <(git diff --name-only v1.0.0-rc.50 HEAD -- '*.ts' '*.tsx')
           bunx oxlint -c .oxlintrc.json "${files[@]#web/}"
       - run: bun run build
 
@@ -108,7 +114,7 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose -f docker-compose.yml config --quiet
       - name: Set image version
-        run: echo "v1.0.0-rc.49-utopia-${GITHUB_SHA:0:12}" > VERSION
+        run: echo "v1.0.0-rc.50-utopia-${GITHUB_SHA:0:12}" > VERSION
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
       - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4
         with:
@@ -143,14 +149,44 @@ jobs:
           curl -fsS http://127.0.0.1:3000/ | grep -q '<html'
           docker push "$IMAGE"
 
+  migration:
+    name: Verify rc.50 fresh install and rc.49 upgrade
+    needs: [image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ptest-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: utopia
+          POSTGRES_PASSWORD: test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U utopia"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Verify production startup migrations twice per database
+        env:
+          UPGRADE_IMAGE: ghcr.io/heartease1/new-utopia-api:sha-${{ github.sha }}-amd64
+        run: sudo --preserve-env=UPGRADE_IMAGE python3 .github/scripts/verify-rc50-upgrade.py
+
   publish:
     name: Publish multi-architecture image
-    needs: [image]
+    needs: [image, migration]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       packages: write
-    # Serialize updates to the moving tag. Deployments should use the digest.
+    # Preserve the moving tag for existing Compose deployments; also record rollback identifiers.
     concurrency: utopia-image-publish
     steps:
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c

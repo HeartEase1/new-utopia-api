@@ -1,6 +1,6 @@
 # 新乌托邦 · 支付宝当面付
 
-基于官方 New API `v1.0.0-rc.49`（`48a6c87f9e7757fdc58e5be9bcb4f8281ad0dfd0`）。
+基于官方 New API `v1.0.0-rc.50`（`f2aa91232ed3e5878a614762ace6736a2b74257f`）。
 第一版提供余额充值、电脑扫码、手机点击唤起支付宝、异步回调、主动查单补单。
 不调用电脑网站/手机网站支付接口，不包含支付宝直购订阅或退款。
 保留 New API 原始许可证、署名和项目标识。
@@ -52,6 +52,7 @@
 
 向本仓库默认分支推送后，[New Utopia Alipay checks](https://github.com/HeartEase1/new-utopia-api/actions/workflows/utopia-alipay.yml) 会先运行支付三数据库测试和前端检查，再原生构建 `linux/amd64`、`linux/arm64` 镜像，检查容器启动、状态接口和内嵌前端，最后发布到 GitHub Container Registry（GHCR）。服务器无需安装 Go、Bun 或自行编译，也不需要 Docker Hub 凭据。
 
+- 兼容标签 `rc49-alipay` 保留原名称，目前发布 rc.50 二开版；无需修改现有 Compose 镜像地址。升级注意事项见 [迁移教程](MIGRATION.md#rc50-升级注意事项)。
 - 默认镜像：`ghcr.io/heartease1/new-utopia-api:rc49-alipay`，测试和生产均可使用，随成功构建更新。
 
 必须等待工作流的 **Publish multi-architecture image** 成功，单独测试通过不代表镜像已经发布。本仓库的 GHCR 镜像已公开，可匿名拉取，无需 Docker Hub 账号。若服务器访问不了 `ghcr.io`，需先解决该服务器的网络访问；GitHub 镜像不会自动同步到国内镜像站。

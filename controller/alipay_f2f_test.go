@@ -117,7 +117,7 @@ func TestAlipayF2F(t *testing.T) {
 	require.True(t, db.Migrator().HasColumn("alipay_fresh_topups", "quota_snapshot"))
 	require.True(t, db.Migrator().HasColumn("alipay_fresh_topups", "expires_at"))
 	require.NoError(t, db.Table("top_ups").AutoMigrate(&alipayRC49TopUp{}))
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.Option{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.Option{}, &model.SystemTask{}))
 	user := model.User{Username: "utopia_alipay_test", Status: common.UserStatusEnabled, Group: "default"}
 	require.NoError(t, db.Create(&user).Error)
 	order := model.TopUp{UserId: user.Id, Amount: 2, Money: 10.01, TradeNo: "UTexisting", PaymentMethod: model.PaymentProviderAlipayF2F, PaymentProvider: model.PaymentProviderAlipayF2F, Status: common.TopUpStatusPending}
@@ -713,6 +713,18 @@ func TestAlipayF2F(t *testing.T) {
 		require.Error(t, model.UpdateOptionsBulk(map[string]string{model.AlipayF2FOptionKey: "{}"}))
 		// Stale clients cannot overwrite a newer configuration.
 		assert.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":false`)
+		var syncTasks []model.SystemTask
+		require.NoError(t, db.Where("type = ?", model.SyncTaskType(model.SyncTopicOptions)).Find(&syncTasks).Error)
+		require.Len(t, syncTasks, 1, "successful Alipay save must notify other nodes; rejected writes must not")
+		assert.NotContains(t, syncTasks[0].Payload, "PRIVATE KEY")
+		// Simulate another node with an empty option cache applying the reload.
+		common.OptionMapRWMutex.Lock()
+		delete(common.OptionMap, model.AlipayF2FOptionKey)
+		common.OptionMapRWMutex.Unlock()
+		require.NoError(t, model.LoadOptionsFromDatabase())
+		live, err = service.GetAlipayF2F()
+		require.NoError(t, err)
+		assert.True(t, live.Enabled)
 		request.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(persisted.Value)))
 		request.PrivateKey, request.AlipayPublicKey = "", ""
 		request.Enabled = false
