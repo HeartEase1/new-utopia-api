@@ -88,8 +88,12 @@ jobs:
       - name: Lint modified frontend files
         shell: bash
         run: |
-          mapfile -t files < <(git diff --name-only v1.0.0-rc.50 HEAD -- '*.ts' '*.tsx')
-          bunx oxlint -c .oxlintrc.json "${files[@]#web/}"
+          # Official rc.50 commit: the fork need not publish upstream release tags.
+          git diff --name-only f2aa91232ed3e5878a614762ace6736a2b74257f HEAD -- '*.ts' '*.tsx' > /tmp/utopia-frontend-files
+          mapfile -t files < /tmp/utopia-frontend-files
+          if ((${#files[@]})); then
+            bunx oxlint -c .oxlintrc.json "${files[@]#web/}"
+          fi
       - run: bun run build
 
   image:
