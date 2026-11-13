@@ -36,6 +36,30 @@
   </head>
 
   <body>
+    <!-- Apply the color preset before first paint: the visitor's own choice,
+         else the site default cached from /api/status. Keep in sync with
+         THEME_STORAGE_KEYS.preset and the system-config store. -->
+    <script>
+      ;(function () {
+        var preset = null
+        try {
+          preset = localStorage.getItem('newapi:theme:v1:preset')
+          if (!preset) {
+            var cached = JSON.parse(
+              localStorage.getItem('system-config-storage') || 'null'
+            )
+            preset = cached.state.config.defaultThemePreset
+          }
+        } catch (e) {}
+        if (
+          typeof preset === 'string' &&
+          preset !== 'default' &&
+          /^[a-z0-9-]+$/.test(preset)
+        ) {
+          document.body.setAttribute('data-theme-preset', preset)
+        }
+      })()
+    </script>
     <div id="root" translate="no" class="notranslate"></div>
   </body>
 </html>

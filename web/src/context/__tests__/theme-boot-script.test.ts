@@ -29,10 +29,23 @@ const html = readFileSync(
   resolve(import.meta.dirname, '../../../index.html'),
   'utf8'
 )
-const bootScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ''
+const inlineScripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+const bootScript = inlineScripts[0]?.[1] ?? ''
+const presetBootScript = inlineScripts[1]?.[1] ?? ''
 
 function runBootScript() {
   new Function(bootScript)()
+}
+
+function runPresetBootScript() {
+  new Function(presetBootScript)()
+}
+
+function cacheSiteDefaultPreset(preset: string) {
+  localStorage.setItem(
+    'system-config-storage',
+    JSON.stringify({ state: { config: { defaultThemePreset: preset } } })
+  )
 }
 
 function mockSystemDarkMode(dark: boolean) {
@@ -53,6 +66,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
   document.documentElement.classList.remove('light', 'dark')
+  document.body.removeAttribute('data-theme-preset')
 })
 
 describe('index.html theme boot script', () => {
@@ -92,4 +106,43 @@ describe('index.html theme boot script', () => {
 
     expect(document.documentElement).toHaveClass('light')
   })
+})
+
+describe('index.html preset boot script', () => {
+  it('applies the cached site default when the visitor has no preset', () => {
+    cacheSiteDefaultPreset('new-utopia')
+
+    runPresetBootScript()
+
+    expect(document.body).toHaveAttribute('data-theme-preset', 'new-utopia')
+  })
+
+  it('prefers the preset the visitor picked over the site default', () => {
+    cacheSiteDefaultPreset('new-utopia')
+    localStorage.setItem(THEME_STORAGE_KEYS.preset, 'rose-garden')
+
+    runPresetBootScript()
+
+    expect(document.body).toHaveAttribute('data-theme-preset', 'rose-garden')
+  })
+
+  it('leaves the built-in default alone when the visitor picked it', () => {
+    cacheSiteDefaultPreset('new-utopia')
+    localStorage.setItem(THEME_STORAGE_KEYS.preset, 'default')
+
+    runPresetBootScript()
+
+    expect(document.body).not.toHaveAttribute('data-theme-preset')
+  })
+
+  it.each(['', 'not json', '{"state":{}}'])(
+    'sets no preset when the cached site config is %j',
+    (cached) => {
+      localStorage.setItem('system-config-storage', cached)
+
+      runPresetBootScript()
+
+      expect(document.body).not.toHaveAttribute('data-theme-preset')
+    }
+  )
 })

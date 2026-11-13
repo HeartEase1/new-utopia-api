@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -26,6 +26,8 @@ import {
 } from '@/context/theme-customization-provider'
 import { ThemeProvider, useTheme } from '@/context/theme-provider'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
+import { resolveSiteDefaultPreset } from '@/lib/theme-customization'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 const savedPreferences = {
   'newapi:theme:v1:mode': 'dark',
@@ -43,6 +45,9 @@ function ThemeControls() {
   return (
     <>
       <output aria-label='Theme mode'>{theme.theme}</output>
+      <output aria-label='Follows site default'>
+        {String(customization.followsSiteDefault)}
+      </output>
       <button type='button' onClick={() => customization.setFont('sans')}>
         Sans font
       </button>
@@ -98,9 +103,18 @@ beforeEach(() => {
   localStorage.clear()
 })
 
+function setSiteDefaultPreset(value: unknown) {
+  act(() => {
+    useSystemConfigStore
+      .getState()
+      .setConfig({ defaultThemePreset: resolveSiteDefaultPreset(value) })
+  })
+}
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  setSiteDefaultPreset('default')
   localStorage.clear()
   for (const cookie of document.cookie.split(';')) {
     const name = cookie.trim().split('=')[0]
@@ -249,6 +263,69 @@ describe('theme preference persistence', () => {
       expect(localStorage.getItem(key)).toBe(value)
     }
     expect(localStorage.getItem('stale-ui-cache')).toBeNull()
+  })
+})
+
+describe('site default preset', () => {
+  it('applies the site default and tracks its changes when no preset is stored', () => {
+    setSiteDefaultPreset('new-utopia')
+
+    render(<ThemeFixture />)
+
+    expect(document.body).toHaveAttribute('data-theme-preset', 'new-utopia')
+    expect(screen.getByLabelText('Follows site default')).toHaveTextContent(
+      'true'
+    )
+
+    setSiteDefaultPreset('lake-view')
+
+    expect(document.body).toHaveAttribute('data-theme-preset', 'lake-view')
+    expect(localStorage.getItem('newapi:theme:v1:preset')).toBeNull()
+  })
+
+  it('keeps a stored preset when the site default changes', () => {
+    localStorage.setItem('newapi:theme:v1:preset', 'rose-garden')
+    render(<ThemeFixture />)
+
+    setSiteDefaultPreset('new-utopia')
+
+    expect(document.body).toHaveAttribute('data-theme-preset', 'rose-garden')
+    expect(screen.getByLabelText('Follows site default')).toHaveTextContent(
+      'false'
+    )
+  })
+
+  it('keeps an explicit choice of the built-in default after remounting', async () => {
+    setSiteDefaultPreset('new-utopia')
+    const user = userEvent.setup()
+    const first = render(<ThemeFixture />)
+
+    await user.click(screen.getByRole('button', { name: 'Default preset' }))
+    first.unmount()
+    render(<ThemeFixture />)
+
+    expect(document.body).not.toHaveAttribute('data-theme-preset')
+    expect(localStorage.getItem('newapi:theme:v1:preset')).toBe('default')
+  })
+
+  it('returns to the site default after a reset', async () => {
+    setSiteDefaultPreset('new-utopia')
+    localStorage.setItem('newapi:theme:v1:preset', 'rose-garden')
+    const user = userEvent.setup()
+    render(<ThemeFixture />)
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+
+    expect(document.body).toHaveAttribute('data-theme-preset', 'new-utopia')
+    expect(localStorage.getItem('newapi:theme:v1:preset')).toBeNull()
+  })
+
+  it('falls back to the built-in default for a preset this build does not ship', () => {
+    setSiteDefaultPreset('not-shipped-yet')
+
+    render(<ThemeFixture />)
+
+    expect(document.body).not.toHaveAttribute('data-theme-preset')
   })
 })
 

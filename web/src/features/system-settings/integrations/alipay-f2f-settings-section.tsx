@@ -53,6 +53,7 @@ function initialValues(settings: AlipayF2FSettings): FormValues {
   return {
     enabled: settings.enabled,
     sandbox: settings.sandbox,
+    notify_alipay_app: settings.notify_alipay_app ?? false,
     app_id: settings.app_id,
     seller_id: settings.seller_id,
     notify_url: settings.notify_url,
@@ -66,6 +67,7 @@ function initialValues(settings: AlipayF2FSettings): FormValues {
 const schema = z.object({
   enabled: z.boolean(),
   sandbox: z.boolean(),
+  notify_alipay_app: z.boolean(),
   app_id: z.string().trim().min(1),
   seller_id: z.string().trim().min(1),
   notify_url: z
@@ -206,6 +208,13 @@ function AlipayF2FSettingsForm({ settings }: { settings: AlipayF2FSettings }) {
               'enabled',
               t('Enable Alipay F2F top-ups'),
               t('New Alipay top-up orders are available to users.'),
+            ],
+            [
+              'notify_alipay_app',
+              t('Alipay receipt notifications'),
+              t(
+                'Request Alipay app receipt notifications for new orders. Enable notifications, receipt voice alerts and background activity on your phone.'
+              ),
             ],
             [
               'sandbox',

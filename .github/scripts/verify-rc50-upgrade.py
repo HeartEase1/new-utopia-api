@@ -27,7 +27,7 @@ def sql(engine, database, statement):
                '-At', '-F', '\t', '-v', 'ON_ERROR_STOP=1', '-c', statement)
 
 
-def boot(image, directory, env):
+def boot(image, directory, env, expected_theme=None):
     args = ['docker', 'run', '-d', '--name', 'utopia-upgrade', '--network', 'host',
             '-v', f'{directory}:/data', '-e', 'PORT=3099', '-e', 'HOST=127.0.0.1',
             '-e', 'DEFAULT_LANGUAGE=en', '-e', 'NODE_NAME=upgrade-check']
@@ -40,6 +40,8 @@ def boot(image, directory, env):
                 with urllib.request.urlopen('http://127.0.0.1:3099/api/status', timeout=2) as response:
                     status = json.load(response)
                 assert status['success'], status
+                if expected_theme is not None:
+                    assert status['data']['default_theme_preset'] == expected_theme, status
                 if image == new_image:
                     assert status['data']['version'].startswith('v1.0.0-rc.50-utopia-'), status
                 print('Started', image, status['data']['version'], flush=True)
@@ -64,6 +66,7 @@ def indexes(engine, database, table):
 
 
 old_images = {
+    'upgrade_latest': 'ghcr.io/heartease1/new-utopia-api:sha-27dd14f9e908ac8125f1838e12cbb2390f7e0581-amd64',
     'upgrade_rc49': 'ghcr.io/heartease1/new-utopia-api:sha-1217036ac92c61ef03f84c23bcab61628fa293be-amd64',
     'upgrade_rc50': 'ghcr.io/heartease1/new-utopia-api:sha-dd808b118c53f0837803c47b19bb09af57998611-amd64',
 }
@@ -103,7 +106,7 @@ for engine in ['sqlite', 'mysql', 'postgres']:
             sql(engine, main, f"INSERT INTO tokens (user_id,{quote}key{quote},name,status,remain_quota) VALUES ({uid},'rc50-migration-test-key','upgrade_token',2,765432)")
             sql(engine, main, f"INSERT INTO top_ups (user_id,trade_no,amount,money,status,payment_method,payment_provider,quota_snapshot,expires_at) VALUES ({uid},'rc50-paid-order',2,10.01,'success','alipay_f2f','alipay_f2f',1000000,1)")
             sql(engine, logs, f"INSERT INTO logs (user_id,content,quota) VALUES ({uid},'rc50-migration-log',123)")
-            for key, value in [('AlipayF2FConfigSecret', '{}'), ('CheckSensitiveEnabled', 'true'), ('CheckSensitiveOnPromptEnabled', 'true'), ('SensitiveWords', 'rc50-migration-blocked-word')]:
+            for key, value in [('AlipayF2FConfigSecret', '{"notify_alipay_app":true}'), ('theme_setting.default_preset', 'new-utopia'), ('CheckSensitiveEnabled', 'true'), ('CheckSensitiveOnPromptEnabled', 'true'), ('SensitiveWords', 'rc50-migration-blocked-word')]:
                 sql(engine, main, f"INSERT INTO options ({quote}key{quote},value) VALUES ('{key}','{value}')")
             queries = [
                 "SELECT username,password,quota,status,aff_quota,aff_history,created_at FROM users WHERE username='upgrade_user'",
@@ -117,7 +120,7 @@ for engine in ['sqlite', 'mysql', 'postgres']:
             old_indexes = {table: indexes(engine, main, table) for table in ['users', 'tokens', 'top_ups', 'options']}
             (directory / 'key-volume-marker').write_text('preserve-data-volume')
             for restart in range(2):
-                boot(new_image, directory, env)
+                boot(new_image, directory, env, expected_theme='new-utopia')
                 assert [sql(engine, main, query) for query in queries] == before
                 assert sql(engine, main, "SELECT referral_user_id,referral_quota FROM top_ups WHERE trade_no='rc50-paid-order'") == '0\t0'
                 # GORM maps Go int to bigint on the supported 64-bit builds.

@@ -21,6 +21,7 @@ import { api } from '@/lib/api'
 export type AlipayF2FSettings = {
   enabled: boolean
   sandbox: boolean
+  notify_alipay_app: boolean
   app_id: string
   seller_id: string
   notify_url: string
@@ -38,7 +39,12 @@ export type AlipayF2FKeyStorage = 'file' | 'encrypted'
 
 export type AlipayF2FSettingsInput = Pick<
   AlipayF2FSettings,
-  'enabled' | 'sandbox' | 'app_id' | 'seller_id' | 'notify_url'
+  | 'enabled'
+  | 'sandbox'
+  | 'notify_alipay_app'
+  | 'app_id'
+  | 'seller_id'
+  | 'notify_url'
 > & {
   key_storage: AlipayF2FKeyStorage
   private_key: string

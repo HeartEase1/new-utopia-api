@@ -28,6 +28,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -158,16 +159,18 @@ func TestAlipayF2F(t *testing.T) {
 	// The only mocked boundary is Alipay's network endpoint, including real RSA2
 	// response signing and the SDK's response verification.
 	queryAmount, queryStatus, queryOrder := "10.01", "TRADE_SUCCESS", ""
+	var precreateBusinessParams map[string]string
 	closeResult, closeCalls := "ACQ.TRADE_NOT_EXIST", 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
 		var biz struct {
-			OutTradeNo           string `json:"out_trade_no"`
-			TotalAmount          string `json:"total_amount"`
-			SellerID             string `json:"seller_id"`
-			TimeoutExpress       string `json:"timeout_express"`
-			TimeExpire           string `json:"time_expire"`
-			QRCodeTimeoutExpress string `json:"qr_code_timeout_express"`
+			BusinessParams       map[string]string `json:"business_params"`
+			OutTradeNo           string            `json:"out_trade_no"`
+			TotalAmount          string            `json:"total_amount"`
+			SellerID             string            `json:"seller_id"`
+			TimeoutExpress       string            `json:"timeout_express"`
+			TimeExpire           string            `json:"time_expire"`
+			QRCodeTimeoutExpress string            `json:"qr_code_timeout_express"`
 		}
 		require.NoError(t, common.UnmarshalJsonStr(r.Form.Get("biz_content"), &biz))
 		responseName := "alipay_trade_query_response"
@@ -188,6 +191,7 @@ func TestAlipayF2F(t *testing.T) {
 			}
 		}
 		if r.Form.Get("method") == "alipay.trade.precreate" {
+			precreateBusinessParams = biz.BusinessParams
 			responseName = "alipay_trade_precreate_response"
 			var saved model.TopUp
 			require.NoError(t, db.Where("trade_no = ?", biz.OutTradeNo).First(&saved).Error)
@@ -554,6 +558,18 @@ func TestAlipayF2F(t *testing.T) {
 		}
 		require.NoError(t, common.Unmarshal(w.Body.Bytes(), &response))
 		require.NotEmpty(t, response.Data.TradeNo)
+		assert.Nil(t, precreateBusinessParams, "notification opt-in is absent by default")
+		created := model.GetTopUpByTradeNo(response.Data.TradeNo)
+		require.NotNil(t, created)
+		client.NotifyAlipayApp = true
+		t.Cleanup(func() { client.NotifyAlipayApp = false })
+		_, err := client.Precreate(context.Background(), created.TradeNo, "10.01", time.Unix(created.ExpiresAt, 0))
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{"notify_alipay_app": "true"}, precreateBusinessParams)
+		client.NotifyAlipayApp = false
+		_, err = client.Precreate(context.Background(), created.TradeNo, "10.01", time.Unix(created.ExpiresAt, 0))
+		require.NoError(t, err)
+		assert.Nil(t, precreateBusinessParams, "turning notifications off omits the opt-in again")
 		oldQuotaPerUnit := common.QuotaPerUnit
 		common.QuotaPerUnit *= 10
 		defer func() { common.QuotaPerUnit = oldQuotaPerUnit }()
@@ -696,7 +712,7 @@ func TestAlipayF2F(t *testing.T) {
 		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &initial))
 		assert.Equal(t, "https://payments.example/api/alipay-f2f/notify", initial.Data.NotifyURL)
 		assert.Equal(t, http.StatusUnauthorized, send(http.MethodGet, "/protected", nil).Code)
-		request := alipayF2FSettingsRequest{AlipayF2FConfig: service.AlipayF2FConfig{Enabled: true, AppID: "app-test", SellerID: "seller-test", NotifyURL: initial.Data.NotifyURL, PrivateKey: private, AlipayPublicKey: public}, Revision: initial.Data.Revision}
+		request := alipayF2FSettingsRequest{AlipayF2FConfig: service.AlipayF2FConfig{Enabled: true, NotifyAlipayApp: true, AppID: "app-test", SellerID: "seller-test", NotifyURL: initial.Data.NotifyURL, PrivateKey: private, AlipayPublicKey: public}, Revision: initial.Data.Revision}
 		response = send(http.MethodPut, "/settings", request)
 		require.Contains(t, response.Body.String(), `"success":true`)
 		assert.NotContains(t, response.Body.String(), "PRIVATE KEY")
@@ -704,10 +720,13 @@ func TestAlipayF2F(t *testing.T) {
 		live, err := service.GetAlipayF2F()
 		require.NoError(t, err)
 		assert.True(t, live.Enabled)
+		assert.True(t, live.NotifyAlipayApp)
 		var persisted model.Option
 		require.NoError(t, db.Where(&model.Option{Key: model.AlipayF2FOptionKey}).First(&persisted).Error)
 		// The default storage keeps the key in a server file; the database
 		// holds only the file reference.
+		assert.Contains(t, response.Body.String(), `"notify_alipay_app":true`)
+		assert.Contains(t, persisted.Value, `"notify_alipay_app":true`)
 		assert.Contains(t, response.Body.String(), `"key_storage":"file"`)
 		assert.NotContains(t, persisted.Value, "PRIVATE KEY")
 		keyFiles, err := filepath.Glob(filepath.Join(storeDir, "private-*.pem"))
@@ -734,13 +753,17 @@ func TestAlipayF2F(t *testing.T) {
 		live, err = service.GetAlipayF2F()
 		require.NoError(t, err)
 		assert.True(t, live.Enabled)
+		assert.True(t, live.NotifyAlipayApp)
 		request.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(persisted.Value)))
 		request.PrivateKey, request.AlipayPublicKey = "", ""
 		request.Enabled = false
+		request.NotifyAlipayApp = false
 		require.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":true`)
 		live, err = service.GetAlipayF2F()
 		require.NoError(t, err)
 		assert.False(t, live.Enabled)
+		assert.False(t, live.NotifyAlipayApp)
+		assert.Contains(t, send(http.MethodGet, "/settings", nil).Body.String(), `"notify_alipay_app":false`)
 		// Disabled new payments still have valid verification keys for old callbacks.
 		values := form()
 		sign(values)
@@ -927,6 +950,8 @@ func TestAlipayF2F(t *testing.T) {
 		live, err = service.GetAlipayF2F()
 		require.NoError(t, err)
 		assert.False(t, live.Enabled)
+		assert.False(t, live.NotifyAlipayApp)
+		assert.Contains(t, send(http.MethodGet, "/settings", nil).Body.String(), `"notify_alipay_app":false`)
 		assert.Contains(t, send(http.MethodGet, "/settings", nil).Body.String(), `"from_environment":true`)
 		request.SellerID, request.Revision = "seller-test", fmt.Sprintf("%x", sha256.Sum256(nil))
 		require.Contains(t, send(http.MethodPut, "/settings", request).Body.String(), `"success":true`)
@@ -1179,6 +1204,35 @@ func TestAlipayF2F(t *testing.T) {
 		require.Error(t, inviter.TransferAffQuotaToQuota(500000))
 		require.NoError(t, db.First(&inviter, inviter.Id).Error)
 		assert.Equal(t, beforeTransfer, inviter.AffQuota, "overflow must not consume earnings")
+	})
+
+	t.Run("site theme persists across cache reload and rejects failed writes", func(t *testing.T) {
+		common.OptionMapRWMutex.Lock()
+		previousOptions := common.OptionMap
+		common.OptionMap = map[string]string{}
+		common.OptionMapRWMutex.Unlock()
+		t.Cleanup(func() {
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap = previousOptions
+			common.OptionMapRWMutex.Unlock()
+		})
+		key := system_setting.ThemeDefaultPresetOptionKey
+		old := system_setting.GetThemeSetting().DefaultPreset
+		t.Cleanup(func() { require.NoError(t, model.UpdateOption(key, old)) })
+		require.NoError(t, model.UpdateOption(key, "new-utopia"))
+		assert.Equal(t, "new-utopia", system_setting.GetThemeSetting().DefaultPreset)
+		require.NoError(t, db.Callback().Update().Before("gorm:update").Register("theme_setting_failure", func(tx *gorm.DB) {
+			if tx.Statement.Table == "options" {
+				tx.AddError(errors.New("injected theme settings failure"))
+			}
+		}))
+		updateErr := model.UpdateOption(key, "default")
+		require.NoError(t, db.Callback().Update().Remove("theme_setting_failure"))
+		require.Error(t, updateErr)
+		assert.Equal(t, "new-utopia", system_setting.GetThemeSetting().DefaultPreset)
+		system_setting.GetThemeSetting().DefaultPreset = "default"
+		require.NoError(t, model.LoadOptionsFromDatabase())
+		assert.Equal(t, "new-utopia", system_setting.GetThemeSetting().DefaultPreset)
 	})
 
 	// Verify malformed JSON does not create an order.

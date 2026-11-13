@@ -152,6 +152,7 @@ export type SiteSettings = {
   'general_setting.docs_link': string
   'legal.user_agreement': string
   'legal.privacy_policy': string
+  'theme_setting.default_preset': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
 }

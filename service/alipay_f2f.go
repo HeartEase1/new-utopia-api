@@ -31,6 +31,7 @@ type AlipayF2F struct {
 	Client                     *alipay.Client
 	AppID, SellerID, NotifyURL string
 	Enabled                    bool
+	NotifyAlipayApp            bool
 }
 
 // Where the application private key lives once settings are saved. The legacy
@@ -51,6 +52,7 @@ var ErrAlipayF2FPrivateKeyUnavailable = errors.New("Alipay F2F private key is un
 type AlipayF2FConfig struct {
 	Enabled         bool   `json:"enabled"`
 	Sandbox         bool   `json:"sandbox"`
+	NotifyAlipayApp bool   `json:"notify_alipay_app"`
 	AppID           string `json:"app_id"`
 	SellerID        string `json:"seller_id"`
 	NotifyURL       string `json:"notify_url"`
@@ -216,7 +218,7 @@ func ValidateAlipayF2FConfig(config AlipayF2FConfig) (*AlipayF2F, error) {
 	if err := client.LoadAliPayPublicKey(string(publicKey)); err != nil {
 		return nil, errors.New("invalid Alipay public key")
 	}
-	return &AlipayF2F{Client: client, AppID: appID, SellerID: sellerID, NotifyURL: notifyURL, Enabled: config.Enabled}, nil
+	return &AlipayF2F{Client: client, AppID: appID, SellerID: sellerID, NotifyURL: notifyURL, Enabled: config.Enabled, NotifyAlipayApp: config.NotifyAlipayApp}, nil
 }
 
 func envAlipayF2FConfig() (AlipayF2FConfig, error) {
@@ -341,9 +343,16 @@ func (a *AlipayF2F) Precreate(ctx context.Context, tradeNo, amount string, expir
 	if _, err := AlipayAmount(amount); err != nil {
 		return "", err
 	}
+	// Alipay requires this opt-in for app receipt notifications / voice alerts.
+	// Omit it when disabled; this does not control our payment callback.
+	var businessParams []byte
+	if a.NotifyAlipayApp {
+		businessParams = []byte(`{"notify_alipay_app":"true"}`)
+	}
 	rsp := new(alipay.TradePreCreateRsp)
 	err := a.Client.Request(ctx, alipayF2FPrecreate{TradePreCreate: alipay.TradePreCreate{Trade: alipay.Trade{
-		OutTradeNo: tradeNo, TotalAmount: amount, Subject: "New Utopia account top-up",
+		BusinessParams: businessParams,
+		OutTradeNo:     tradeNo, TotalAmount: amount, Subject: "New Utopia account top-up",
 		ProductCode: "FACE_TO_FACE_PAYMENT", NotifyURL: a.NotifyURL, SellerId: a.SellerID, TimeoutExpress: "5m",
 		TimeExpire: expiresAt.In(time.FixedZone("CST", 8*60*60)).Format("2006-01-02 15:04:05"),
 	}}, QRCodeTimeoutExpress: "5m"}, rsp)

@@ -38,6 +38,7 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
+import { ThemePresetPicker } from '@/components/theme-preset-picker'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -55,9 +56,7 @@ import { useTheme } from '@/context/theme-provider'
 import {
   type ContentLayout,
   resolveThemeFont,
-  THEME_PRESETS,
   type ThemeFont,
-  type ThemePreset,
   type ThemeRadius,
   type ThemeScale,
 } from '@/lib/theme-customization'
@@ -246,59 +245,25 @@ function ThemeConfig() {
 
 function PresetConfig() {
   const { t } = useTranslation()
-  const { defaults, customization, setPreset } = useThemeCustomization()
+  const { customization, followsSiteDefault, setPreset } =
+    useThemeCustomization()
   return (
     <div>
       <SectionTitle
         title={t('Color preset')}
-        showReset={customization.preset !== defaults.preset}
-        onReset={() => setPreset(defaults.preset)}
+        showReset={!followsSiteDefault}
+        onReset={() => setPreset(null)}
       />
-      <Radio
+      <ThemePresetPicker
         value={customization.preset}
-        onValueChange={(v) => setPreset(v as ThemePreset)}
-        className='grid w-full grid-cols-4 gap-3'
-        aria-label={t('Select color preset')}
-      >
-        {THEME_PRESETS.map((preset) => (
-          <Item
-            key={preset.value}
-            value={preset.value}
-            className='group flex flex-col items-stretch outline-none'
-            aria-label={t(`preset.${preset.value}`)}
-          >
-            <div
-              className={cn(
-                'ring-border relative h-12 rounded-md ring-[1px] transition',
-                'group-data-checked:ring-primary group-data-checked:shadow-md',
-                'group-focus-visible:ring-2',
-                'group-hover:ring-primary/60'
-              )}
-            >
-              <div
-                aria-hidden='true'
-                className='absolute inset-0 rounded-md'
-                style={{
-                  background:
-                    preset.value === 'default'
-                      ? 'linear-gradient(135deg, oklch(0.68 0.2 25) 0%, oklch(0.8 0.17 85) 25%, oklch(0.72 0.18 155) 50%, oklch(0.66 0.19 245) 75%, oklch(0.68 0.2 315) 100%)'
-                      : `linear-gradient(135deg, ${preset.swatches[0]} 0%, ${preset.swatches[1] ?? preset.swatches[0]} 100%)`,
-                }}
-              />
-              <CircleCheck
-                className={cn(
-                  'fill-primary absolute top-0 right-0 z-10 size-5 translate-x-1/2 -translate-y-1/2 stroke-white',
-                  'group-data-unchecked:hidden'
-                )}
-                aria-hidden='true'
-              />
-            </div>
-            <div className='mt-1.5 truncate text-center text-xs'>
-              {t(`preset.${preset.value}`)}
-            </div>
-          </Item>
-        ))}
-      </Radio>
+        onValueChange={setPreset}
+        ariaLabel={t('Select color preset')}
+      />
+      {followsSiteDefault && (
+        <p className='text-muted-foreground mt-2 text-xs'>
+          {t('Following the site default theme')}
+        </p>
+      )}
     </div>
   )
 }

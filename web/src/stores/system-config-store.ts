@@ -20,6 +20,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
+import type { ThemePreset } from '@/lib/theme-customization'
 
 export type CurrencyDisplayType = 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM'
 
@@ -44,6 +45,8 @@ export interface SystemConfig {
   footerHtml?: string
   demoSiteEnabled?: boolean
   displayTokenStatEnabled?: boolean
+  /** Color preset for visitors who have not chosen one themselves */
+  defaultThemePreset?: ThemePreset
   currency: CurrencyConfig
 }
 

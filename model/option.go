@@ -288,10 +288,16 @@ func validateOptionValue(key string, value string) error {
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
+	if key == system_setting.ThemeDefaultPresetOptionKey {
+		return system_setting.ValidateThemeDefaultPreset(value)
+	}
 	return nil
 }
 
 func UpdateOption(key string, value string) error {
+	if key == system_setting.ThemeDefaultPresetOptionKey {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if key == "referral_setting.percent" || key == "referral_setting.days" {
 		// Monetary settings must not become active when persistence failed.
 		return UpdateOptionsBulk(map[string]string{key: value})

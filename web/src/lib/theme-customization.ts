@@ -30,6 +30,14 @@ export const THEME_PRESETS = [
     swatches: ['oklch(0.72 0.18 250)', 'oklch(0.7 0.12 280)'],
   },
   {
+    // Morning-mist healing palette: cream canvas, sage green as the calm
+    // primary, peach as the warm accent. Surfaces and ambience live in
+    // `styles/presets/new-utopia.css`.
+    value: 'new-utopia',
+    name: 'New Utopia',
+    swatches: ['oklch(0.72 0.07 150)', 'oklch(0.88 0.07 55)'],
+  },
+  {
     // Inspired by Anthropic's official brand language: warm cream canvas
     // (#faf9f5) paired with clay/coral (#d97757) as the single accent.
     // Swatches preview the canvas → accent gradient that defines the system.
@@ -122,6 +130,18 @@ export const DEFAULT_THEME_CUSTOMIZATION: ThemeCustomization = {
 export const THEME_PRESET_VALUES = new Set(
   THEME_PRESETS.map((p) => p.value)
 ) as ReadonlySet<ThemePreset>
+
+/**
+ * Resolve the admin-configured site default preset from `/api/status`.
+ * The backend only checks the id's shape, so an id this build does not ship
+ * falls back to the built-in default.
+ */
+export function resolveSiteDefaultPreset(value: unknown): ThemePreset {
+  return typeof value === 'string' &&
+    THEME_PRESET_VALUES.has(value as ThemePreset)
+    ? (value as ThemePreset)
+    : DEFAULT_THEME_CUSTOMIZATION.preset
+}
 
 export const THEME_FONT_VALUES: ReadonlySet<ThemeFont> = new Set([
   'default',

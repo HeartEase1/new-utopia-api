@@ -1,0 +1,222 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/* ── New Utopia ───────────────────────────────────────────────────────────
+ * A calm, healing palette: morning-mist cream canvas, sage green as the one
+ * steady accent, peach for warmth. Nothing is saturated or pure white/black,
+ * so long sessions stay easy on the eyes.
+ *
+ * OKLCH hue 85 = cream, 150 = sage, 55 = peach, 110 = moss night (dark).
+ *
+ * This preset defines its own surfaces, so it is opted out of the semantic
+ * surface bridge in theme-presets.css. Text/surface pairs were checked
+ * against WCAG AA (4.5:1) in both modes; re-check when changing lightness.
+ *
+ * Each character theme added later gets its own file next to this one.
+ */
+[data-theme-preset='new-utopia'] {
+  --background: oklch(0.985 0.012 85);
+  --foreground: oklch(0.31 0.02 60);
+
+  /* Cards sit slightly lighter than the canvas, like paper on linen. */
+  --card: oklch(0.995 0.007 85);
+  --card-foreground: oklch(0.31 0.02 60);
+  --popover: oklch(0.995 0.006 85);
+  --popover-foreground: oklch(0.31 0.02 60);
+
+  --primary: oklch(0.53 0.07 150);
+  --primary-foreground: oklch(0.99 0.01 95);
+  --secondary: oklch(0.93 0.04 60);
+  --secondary-foreground: oklch(0.36 0.04 50);
+
+  --muted: oklch(0.955 0.014 85);
+  --muted-foreground: oklch(0.5 0.02 70);
+  --accent: oklch(0.935 0.03 145);
+  --accent-foreground: oklch(0.31 0.03 150);
+
+  --destructive: oklch(0.56 0.16 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.54 0.09 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.8 0.11 75);
+  --warning-foreground: oklch(0.31 0.02 60);
+  --info: oklch(0.55 0.08 235);
+  --info-foreground: oklch(0.99 0 0);
+  --neutral: oklch(0.5 0.02 70);
+  --neutral-foreground: oklch(0.31 0.02 60);
+
+  --border: oklch(0.905 0.018 85);
+  --input: oklch(0.89 0.02 85);
+  --ring: oklch(0.53 0.07 150);
+
+  --chart-1: oklch(0.6 0.08 150); /* sage */
+  --chart-2: oklch(0.76 0.1 55); /* peach */
+  --chart-3: oklch(0.68 0.07 235); /* mist blue */
+  --chart-4: oklch(0.82 0.1 85); /* apricot */
+  --chart-5: oklch(0.7 0.08 310); /* lilac */
+
+  --sidebar: oklch(0.97 0.016 85);
+  --sidebar-foreground: oklch(0.31 0.02 60);
+  --sidebar-primary: oklch(0.53 0.07 150);
+  --sidebar-primary-foreground: oklch(0.99 0.01 95);
+  --sidebar-accent: oklch(0.935 0.03 145);
+  --sidebar-accent-foreground: oklch(0.31 0.03 150);
+  --sidebar-border: oklch(0.905 0.018 85);
+  --sidebar-ring: oklch(0.53 0.07 150);
+
+  --skeleton-base: oklch(0.94 0.014 85);
+  --skeleton-highlight: oklch(0.97 0.01 85);
+
+  --utopia-glow-sage: oklch(0.87 0.07 150 / 45%);
+  --utopia-glow-peach: oklch(0.9 0.07 55 / 50%);
+  --utopia-shadow:
+    0 1px 2px oklch(0.4 0.03 70 / 5%),
+    0 14px 32px -14px oklch(0.4 0.04 70 / 16%);
+}
+.dark [data-theme-preset='new-utopia'] {
+  /* A warm moss night rather than black, so dark mode stays soft too. */
+  --background: oklch(0.235 0.012 110);
+  --foreground: oklch(0.93 0.015 90);
+  --card: oklch(0.275 0.013 110);
+  --card-foreground: oklch(0.93 0.015 90);
+  --popover: oklch(0.295 0.013 110);
+  --popover-foreground: oklch(0.93 0.015 90);
+
+  --primary: oklch(0.76 0.075 150);
+  --primary-foreground: oklch(0.22 0.02 150);
+  --secondary: oklch(0.33 0.025 60);
+  --secondary-foreground: oklch(0.92 0.015 90);
+
+  --muted: oklch(0.3 0.012 110);
+  --muted-foreground: oklch(0.74 0.02 90);
+  --accent: oklch(0.34 0.03 150);
+  --accent-foreground: oklch(0.95 0.015 90);
+
+  --destructive: oklch(0.7 0.15 25);
+  --destructive-foreground: oklch(0.2 0.02 25);
+  --success: oklch(0.74 0.09 150);
+  --success-foreground: oklch(0.22 0.02 150);
+  --warning: oklch(0.8 0.11 75);
+  --warning-foreground: oklch(0.22 0.02 150);
+  --info: oklch(0.74 0.07 235);
+  --info-foreground: oklch(0.22 0.02 150);
+  --neutral: oklch(0.74 0.02 90);
+  --neutral-foreground: oklch(0.22 0.02 150);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.76 0.075 150);
+
+  --chart-1: oklch(0.76 0.075 150);
+  --chart-2: oklch(0.8 0.09 55);
+  --chart-3: oklch(0.74 0.07 235);
+  --chart-4: oklch(0.84 0.09 85);
+  --chart-5: oklch(0.76 0.08 310);
+
+  --sidebar: oklch(0.215 0.012 110);
+  --sidebar-foreground: oklch(0.92 0.015 90);
+  --sidebar-primary: oklch(0.76 0.075 150);
+  --sidebar-primary-foreground: oklch(0.22 0.02 150);
+  --sidebar-accent: oklch(0.32 0.03 150);
+  --sidebar-accent-foreground: oklch(0.95 0.015 90);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.76 0.075 150);
+
+  --skeleton-base: oklch(0.3 0.012 110);
+  --skeleton-highlight: oklch(0.38 0.012 110);
+
+  --utopia-glow-sage: oklch(0.5 0.07 150 / 24%);
+  --utopia-glow-peach: oklch(0.52 0.07 55 / 18%);
+  --utopia-shadow:
+    0 1px 2px oklch(0 0 0 / 20%), 0 14px 32px -14px oklch(0 0 0 / 45%);
+}
+
+/* Rounder corners by default. This file loads after the radius axis in
+ * theme-presets.css, so only apply it while the user has no radius choice. */
+[data-theme-preset='new-utopia']:not([data-theme-radius]) {
+  --radius: 1.125rem;
+}
+
+/* ── Ambience ─────────────────────────────────────────────────────────────
+ * Two soft glows behind the page content: sage from the top-left, peach
+ * from the top-right. They live on a pseudo-element of the page shells
+ * (which paint over <body>), below the content, so text contrast is
+ * untouched. Only opacity and transform animate, so the slow "breathing"
+ * stays on the compositor. */
+[data-theme-preset='new-utopia']
+  :is([data-slot='sidebar-inset'], [data-slot='public-layout']) {
+  isolation: isolate;
+}
+[data-theme-preset='new-utopia']
+  :is([data-slot='sidebar-inset'], [data-slot='public-layout'])::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  height: min(100%, 100svh);
+  border-radius: inherit;
+  pointer-events: none;
+  background-image:
+    radial-gradient(
+      60rem 34rem at 6% -10%,
+      var(--utopia-glow-sage),
+      transparent 70%
+    ),
+    radial-gradient(
+      52rem 32rem at 100% -6%,
+      var(--utopia-glow-peach),
+      transparent 70%
+    );
+  background-repeat: no-repeat;
+  transform-origin: top center;
+  animation: new-utopia-breathe 14s ease-in-out infinite alternate;
+}
+
+@keyframes new-utopia-breathe {
+  from {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme-preset='new-utopia']
+    :is([data-slot='sidebar-inset'], [data-slot='public-layout'])::before {
+    animation: none;
+  }
+}
+
+/* Soft, warm elevation instead of hard edges. */
+[data-theme-preset='new-utopia']
+  :is(
+    [data-slot='card'],
+    [data-slot='popover-content'],
+    [data-slot='dropdown-menu-content'],
+    [data-slot='dialog-content']
+  ) {
+  box-shadow: var(--utopia-shadow);
+}
+
+[data-theme-preset='new-utopia'] ::selection {
+  background-color: color-mix(in oklch, var(--primary) 28%, transparent);
+}

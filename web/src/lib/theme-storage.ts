@@ -25,11 +25,15 @@ export const THEME_STORAGE_KEYS = {
   contentLayout: 'newapi:theme:v1:content-layout',
 } as const
 
-export function readThemePreference<T extends string>(
+/**
+ * Read a stored preference. Pass `null` as the fallback to tell "nothing valid
+ * is stored" apart from an explicit choice of the default value.
+ */
+export function readThemePreference<T extends string, F extends T | null = T>(
   key: string,
   allowed: ReadonlySet<T>,
-  fallback: T
-): T {
+  fallback: F
+): T | F {
   if (typeof window === 'undefined') return fallback
 
   try {

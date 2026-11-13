@@ -28,6 +28,7 @@ import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { ThemeSection } from './theme-section'
 
 const SITE_SECTIONS = [
   {
@@ -52,6 +53,13 @@ const SITE_SECTIONS = [
           },
         }}
       />
+    ),
+  },
+  {
+    id: 'theme',
+    titleKey: 'Site theme',
+    build: (settings: SiteSettings) => (
+      <ThemeSection defaultPreset={settings['theme_setting.default_preset']} />
     ),
   },
   {

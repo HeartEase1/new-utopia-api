@@ -45,6 +45,7 @@ import {
   THEME_STORAGE_KEYS,
   writeThemePreference,
 } from '@/lib/theme-storage'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 function applyAttribute(name: string, value: string | null) {
   if (typeof document === 'undefined') return
@@ -59,8 +60,12 @@ function applyAttribute(name: string, value: string | null) {
 
 type ThemeCustomizationContextType = {
   defaults: ThemeCustomization
+  /** The effective customization; `preset` already resolves the site default. */
   customization: ThemeCustomization
-  setPreset: (preset: ThemePreset) => void
+  siteDefaultPreset: ThemePreset
+  followsSiteDefault: boolean
+  /** Pass `null` to drop the personal choice and follow the site default. */
+  setPreset: (preset: ThemePreset | null) => void
   setFont: (font: ThemeFont) => void
   setRadius: (radius: ThemeRadius) => void
   setScale: (scale: ThemeScale) => void
@@ -75,6 +80,8 @@ type ThemeCustomizationContextType = {
 const FALLBACK_CONTEXT: ThemeCustomizationContextType = {
   defaults: DEFAULT_THEME_CUSTOMIZATION,
   customization: DEFAULT_THEME_CUSTOMIZATION,
+  siteDefaultPreset: DEFAULT_THEME_CUSTOMIZATION.preset,
+  followsSiteDefault: true,
   setPreset: () => {},
   setFont: () => {},
   setRadius: () => {},
@@ -89,13 +96,19 @@ const ThemeCustomizationContext =
 export function ThemeCustomizationProvider(props: {
   children: React.ReactNode
 }) {
-  const [preset, _setPreset] = useState<ThemePreset>(() =>
-    readThemePreference<ThemePreset>(
+  // `null` means the user has not picked a preset and follows the site
+  // default; an explicit pick (including `default`) is stored and wins.
+  const [userPreset, _setUserPreset] = useState<ThemePreset | null>(() =>
+    readThemePreference<ThemePreset, null>(
       THEME_STORAGE_KEYS.preset,
       THEME_PRESET_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.preset
+      null
     )
   )
+  const siteDefaultPreset =
+    useSystemConfigStore((state) => state.config.defaultThemePreset) ??
+    DEFAULT_THEME_CUSTOMIZATION.preset
+  const preset = userPreset ?? siteDefaultPreset
   const [font, _setFont] = useState<ThemeFont>(() =>
     readThemePreference<ThemeFont>(
       THEME_STORAGE_KEYS.font,
@@ -158,12 +171,9 @@ export function ThemeCustomizationProvider(props: {
     applyAttribute('data-theme-content-layout', contentLayout)
   }, [contentLayout])
 
-  const setPreset = useCallback((value: ThemePreset) => {
-    _setPreset(value)
-    writeThemePreference(
-      THEME_STORAGE_KEYS.preset,
-      value === DEFAULT_THEME_CUSTOMIZATION.preset ? null : value
-    )
+  const setPreset = useCallback((value: ThemePreset | null) => {
+    _setUserPreset(value)
+    writeThemePreference(THEME_STORAGE_KEYS.preset, value)
   }, [])
 
   const setFont = useCallback((value: ThemeFont) => {
@@ -199,7 +209,7 @@ export function ThemeCustomizationProvider(props: {
   }, [])
 
   const resetCustomization = useCallback(() => {
-    setPreset(DEFAULT_THEME_CUSTOMIZATION.preset)
+    setPreset(null)
     setFont(DEFAULT_THEME_CUSTOMIZATION.font)
     setRadius(DEFAULT_THEME_CUSTOMIZATION.radius)
     setScale(DEFAULT_THEME_CUSTOMIZATION.scale)
@@ -210,6 +220,8 @@ export function ThemeCustomizationProvider(props: {
     () => ({
       defaults: DEFAULT_THEME_CUSTOMIZATION,
       customization: { preset, font, radius, scale, contentLayout },
+      siteDefaultPreset,
+      followsSiteDefault: userPreset === null,
       setPreset,
       setFont,
       setRadius,
@@ -219,6 +231,8 @@ export function ThemeCustomizationProvider(props: {
     }),
     [
       preset,
+      siteDefaultPreset,
+      userPreset,
       font,
       radius,
       scale,

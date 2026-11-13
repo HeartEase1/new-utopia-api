@@ -32,6 +32,7 @@ const i18n = createInstance()
 const settings: AlipayF2FSettings = {
   enabled: true,
   sandbox: false,
+  notify_alipay_app: false,
   app_id: '2026000000000000',
   seller_id: '2088000000000000',
   notify_url: 'https://pay.example/api/alipay-f2f/notify',
@@ -99,6 +100,7 @@ it('keeps saved keys blank and saves a disabled gateway using the existing keys'
     expect(put).toHaveBeenCalledWith('/api/option/alipay-f2f', {
       enabled: false,
       sandbox: false,
+      notify_alipay_app: false,
       app_id: settings.app_id,
       seller_id: settings.seller_id,
       notify_url: settings.notify_url,
@@ -238,3 +240,51 @@ it('offers retry when loading fails and keeps controls unavailable until loaded'
     settings.app_id
   )
 })
+
+it.each([false, true])(
+  'saves receipt notification opt-in from %s and displays the saved choice',
+  async (enabled) => {
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: { ...settings, notify_alipay_app: enabled },
+      },
+    })
+    const put = vi.spyOn(api, 'put').mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          ...settings,
+          notify_alipay_app: !enabled,
+          revision: 'revision-2',
+        },
+      },
+    })
+    show()
+    const user = userEvent.setup()
+    const toggle = await screen.findByRole('switch', {
+      name: 'Alipay receipt notifications',
+    })
+    expect(toggle).toHaveAttribute('aria-checked', String(enabled))
+    toggle.focus()
+    await user.keyboard(' ')
+    await user.click(
+      screen.getByRole('button', { name: 'Save Alipay settings' })
+    )
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith(
+        '/api/option/alipay-f2f',
+        expect.objectContaining({
+          notify_alipay_app: !enabled,
+          private_key: '',
+          alipay_public_key: '',
+        })
+      )
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByRole('switch', { name: 'Alipay receipt notifications' })
+      ).toHaveAttribute('aria-checked', String(!enabled))
+    )
+  }
+)

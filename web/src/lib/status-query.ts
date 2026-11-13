@@ -20,6 +20,7 @@ import { queryOptions, type QueryClient } from '@tanstack/react-query'
 
 import { getStatus } from '@/lib/api'
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
+import { resolveSiteDefaultPreset } from '@/lib/theme-customization'
 import {
   useSystemConfigStore,
   type CurrencyConfig,
@@ -99,6 +100,7 @@ export function mapStatusDataToConfig(
     displayTokenStatEnabled: data.display_token_stat_enabled as
       | boolean
       | undefined,
+    defaultThemePreset: resolveSiteDefaultPreset(data.default_theme_preset),
     currency,
   }
 }

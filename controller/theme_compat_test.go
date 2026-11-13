@@ -44,4 +44,20 @@ func TestGetStatusAdvertisesDefaultDashboard(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
 	assert.True(t, payload.Success)
 	assert.Equal(t, "default", payload.Data["theme"])
+	assert.Equal(t, "default", payload.Data["default_theme_preset"])
+}
+
+func TestUpdateOptionRejectsInvalidDefaultThemePreset(t *testing.T) {
+	response := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(response)
+	context.Request = httptest.NewRequest(
+		http.MethodPut,
+		"/api/option/",
+		strings.NewReader(`{"key":"theme_setting.default_preset","value":"<script>"}`),
+	)
+
+	UpdateOption(context)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.JSONEq(t, `{"success":false,"message":"The default theme must be a valid theme preset","message_key":"The default theme must be a valid theme preset"}`, response.Body.String())
 }
