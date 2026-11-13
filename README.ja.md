@@ -1,4 +1,4 @@
-> **新ウートピア派生版**：公式 New API `v1.0.0-rc.50` を基に Alipay 対面決済を追加しています。[テスト環境と Alipay 設定](ALIPAY.md) · [本番環境の切り替え手順](MIGRATION.md)（中国語）。以下のコマンドは本フォークを使用し、上流の著作者表記は保持しています。
+> **新ウートピア派生版**：公式 New API `v1.0.0-rc.51` を基に Alipay 対面決済を追加しています。[テスト環境と Alipay 設定](ALIPAY.md) · [本番環境の切り替え手順](MIGRATION.md)（中国語）。以下のコマンドは本フォークを使用し、上流の著作者表記は保持しています。
 >
 > GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
 
@@ -195,7 +195,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-> **新ウートピア派生版**：公式 New API `v1.0.0-rc.50` を基に Alipay 対面決済を追加しています。[テスト環境と Alipay 設定](ALIPAY.md) · [本番環境の切り替え手順](MIGRATION.md)（中国語）。以下のコマンドは本フォークを使用し、上流の著作者表記は保持しています。
+> **新ウートピア派生版**：公式 New API `v1.0.0-rc.51` を基に Alipay 対面決済を追加しています。[テスト環境と Alipay 設定](ALIPAY.md) · [本番環境の切り替え手順](MIGRATION.md)（中国語）。以下のコマンドは本フォークを使用し、上流の著作者表記は保持しています。
 
 リポジトリの [Compose 設定](./docker-compose.yml) は、既定で **New API + PostgreSQL + Redis** を起動します。MySQL と独立した ClickHouse ログデータベースの設定例も含まれます。
 

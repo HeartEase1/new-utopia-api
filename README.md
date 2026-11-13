@@ -1,6 +1,6 @@
 # 新乌托邦 · New API 支付宝当面付二开版
 
-基于官方 **New API `v1.0.0-rc.50`**，新增余额充值的电脑扫码、手机点击唤起支付宝、支付回调和查单补单。支持 Linux amd64 / arm64。
+基于官方 **New API `v1.0.0-rc.51`**，新增余额充值的电脑扫码、手机点击唤起支付宝、支付回调和查单补单。支持 Linux amd64 / arm64。
 
 ## 镜像与部署入口
 
@@ -50,7 +50,7 @@ docker compose logs --tail=100 new-api
 
 以下为 New API 上游项目介绍及详细使用说明，部署命令已适配本仓库。
 
-> **New Utopia fork**: Based on official New API `v1.0.0-rc.50`, with Alipay face-to-face wallet top-ups. [Test deployment and Alipay configuration](ALIPAY.md) · [Production migration from the official image](MIGRATION.md) (Chinese). Deployment commands below use this fork; upstream attribution is retained.
+> **New Utopia fork**: Based on official New API `v1.0.0-rc.51`, with Alipay face-to-face wallet top-ups. [Test deployment and Alipay configuration](ALIPAY.md) · [Production migration from the official image](MIGRATION.md) (Chinese). Deployment commands below use this fork; upstream attribution is retained.
 >
 > GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
 

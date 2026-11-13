@@ -1,4 +1,4 @@
-> **Fork New Utopia** : Basé sur New API officiel `v1.0.0-rc.50`, avec recharge du solde via Alipay face-à-face. [Test et configuration Alipay](ALIPAY.md) · [Migration en production](MIGRATION.md) (guides en chinois). Les commandes ci-dessous utilisent ce fork ; les attributions amont sont conservées.
+> **Fork New Utopia** : Basé sur New API officiel `v1.0.0-rc.51`, avec recharge du solde via Alipay face-à-face. [Test et configuration Alipay](ALIPAY.md) · [Migration en production](MIGRATION.md) (guides en chinois). Les commandes ci-dessous utilisent ce fork ; les attributions amont sont conservées.
 >
 > GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
 
@@ -195,7 +195,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-> **Fork New Utopia** : Basé sur New API officiel `v1.0.0-rc.50`, avec recharge du solde via Alipay face-à-face. [Test et configuration Alipay](ALIPAY.md) · [Migration en production](MIGRATION.md) (guides en chinois). Les commandes ci-dessous utilisent ce fork ; les attributions amont sont conservées.
+> **Fork New Utopia** : Basé sur New API officiel `v1.0.0-rc.51`, avec recharge du solde via Alipay face-à-face. [Test et configuration Alipay](ALIPAY.md) · [Migration en production](MIGRATION.md) (guides en chinois). Les commandes ci-dessous utilisent ce fork ; les attributions amont sont conservées.
 
 La [configuration Compose](./docker-compose.yml) du dépôt démarre **New API + PostgreSQL + Redis** par défaut. Elle contient aussi des exemples pour MySQL et une base de journaux ClickHouse distincte.
 

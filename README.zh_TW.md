@@ -1,4 +1,4 @@
-> **新烏托邦二開版**：基於官方 New API `v1.0.0-rc.50`，新增支付寶當面付餘額儲值。[測試部署與支付寶設定](ALIPAY.md) · [正式環境切換教學](MIGRATION.md)（簡體中文）。下方部署命令均使用本儲存庫映像，保留上游署名。
+> **新烏托邦二開版**：基於官方 New API `v1.0.0-rc.51`，新增支付寶當面付餘額儲值。[測試部署與支付寶設定](ALIPAY.md) · [正式環境切換教學](MIGRATION.md)（簡體中文）。下方部署命令均使用本儲存庫映像，保留上游署名。
 >
 > GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
 
@@ -194,7 +194,7 @@ curl --fail-with-body http://localhost:3000/v1/responses \
 
 ### Docker Compose
 
-> **新烏托邦二開版**：基於官方 New API `v1.0.0-rc.50`，新增支付寶當面付餘額儲值。[測試部署與支付寶設定](ALIPAY.md) · [正式環境切換教學](MIGRATION.md)（簡體中文）。下方部署命令均使用本儲存庫映像，保留上游署名。
+> **新烏托邦二開版**：基於官方 New API `v1.0.0-rc.51`，新增支付寶當面付餘額儲值。[測試部署與支付寶設定](ALIPAY.md) · [正式環境切換教學](MIGRATION.md)（簡體中文）。下方部署命令均使用本儲存庫映像，保留上游署名。
 
 儲存庫的 [Compose 設定](./docker-compose.yml) 預設啟動 **New API + PostgreSQL + Redis**，並提供 MySQL 和獨立 ClickHouse 日誌資料庫的設定範例。
 

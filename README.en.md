@@ -1,4 +1,4 @@
-> **New Utopia fork**: Based on official New API `v1.0.0-rc.50`, with Alipay face-to-face wallet top-ups. [Test deployment and Alipay configuration](ALIPAY.md) · [Production migration from the official image](MIGRATION.md) (Chinese). Deployment commands below use this fork; upstream attribution is retained.
+> **New Utopia fork**: Based on official New API `v1.0.0-rc.51`, with Alipay face-to-face wallet top-ups. [Test deployment and Alipay configuration](ALIPAY.md) · [Production migration from the official image](MIGRATION.md) (Chinese). Deployment commands below use this fork; upstream attribution is retained.
 >
 > GHCR: `ghcr.io/heartease1/new-utopia-api:rc49-alipay` · `linux/amd64` / `linux/arm64`
 

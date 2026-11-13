@@ -1,4 +1,4 @@
-"""Exercise fresh installs and released rc.49/rc.50 upgrades on disposable CI databases."""
+"""Exercise rc.51 fresh installs and released rc.49/rc.50 fork upgrades on disposable CI databases."""
 import json
 import os
 from pathlib import Path
@@ -43,7 +43,7 @@ def boot(image, directory, env, expected_theme=None):
                 if expected_theme is not None:
                     assert status['data']['default_theme_preset'] == expected_theme, status
                 if image == new_image:
-                    assert status['data']['version'].startswith('v1.0.0-rc.50-utopia-'), status
+                    assert status['data']['version'].startswith('v1.0.0-rc.51-utopia-'), status
                 print('Started', image, status['data']['version'], flush=True)
                 return
             except (OSError, ValueError):
@@ -66,7 +66,7 @@ def indexes(engine, database, table):
 
 
 old_images = {
-    'upgrade_latest': 'ghcr.io/heartease1/new-utopia-api:sha-27dd14f9e908ac8125f1838e12cbb2390f7e0581-amd64',
+    'upgrade_latest': 'ghcr.io/heartease1/new-utopia-api:sha-eb174295a8ecb6f6661c31c88818379e8881ae21-amd64',
     'upgrade_rc49': 'ghcr.io/heartease1/new-utopia-api:sha-1217036ac92c61ef03f84c23bcab61628fa293be-amd64',
     'upgrade_rc50': 'ghcr.io/heartease1/new-utopia-api:sha-dd808b118c53f0837803c47b19bb09af57998611-amd64',
 }

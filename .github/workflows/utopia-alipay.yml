@@ -63,12 +63,14 @@ jobs:
         run: |
           go test ./model -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|Quota|Reserve|Redemption|Redeem|AuthCache|UserAuth' -count=1
           go test ./controller ./service ./middleware -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|RateLimit' -count=1
-      - name: Upstream rc.50 integration regressions
+      - name: Upstream rc.51 integration regressions
         run: |
           go test ./model ./service ./relay/... ./pkg/billingexpr/... ./pkg/jsplugin/... ./plugins/... ./router/... ./setting/... ./common/... -count=1
           go test ./controller -run 'Plugin|Sensitive|SystemTask|Epay|OAuthRegistrationPersistsInviter|Theme|DefaultDashboard' -count=1
           go test ./middleware -run 'AccessToken|Alipay|SessionCookieOrigin' -count=1
+          go test ./controller -run 'Auth|Password|Session|Register|Setup' -count=1
           (cd relaykit && GOWORK=off go build ./...)
+          (cd relaykit && GOWORK=off go test ./...)
           (cd tokenkit && GOWORK=off go build ./...)
   frontend:
     runs-on: ubuntu-latest
@@ -85,12 +87,12 @@ jobs:
           bun-version: '1.4.4'
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun run test src/components/layout/__tests__ src/hooks/__tests__/sidebar-config.test.tsx src/features/wallet src/features/pricing src/features/system-settings/models/__tests__/group-settings.test.tsx src/features/system-settings/integrations src/features/system-settings/general/__tests__/pre-consume-settings.test.tsx src/features/request-processing src/features/system-info src/features/task-plugins src/context/__tests__ src/features/system-settings/site/__tests__
+      - run: bun run test src/components/layout/__tests__ src/components/__tests__/password-input.test.tsx src/components/__tests__/password-strength.test.tsx src/hooks/__tests__/sidebar-config.test.tsx src/features/auth src/features/security src/features/setup src/features/users/components/__tests__/password-feedback.test.tsx src/features/wallet src/features/pricing src/features/system-settings/models/__tests__/group-settings.test.tsx src/features/system-settings/integrations src/features/system-settings/general/__tests__/pre-consume-settings.test.tsx src/features/request-processing src/features/system-info src/features/task-plugins src/context/__tests__ src/features/system-settings/site/__tests__
       - name: Lint modified frontend files
         shell: bash
         run: |
-          # Official rc.50 commit: the fork need not publish upstream release tags.
-          git diff --name-only f2aa91232ed3e5878a614762ace6736a2b74257f HEAD -- '*.ts' '*.tsx' > /tmp/utopia-frontend-files
+          # Official rc.51 commit: the fork need not publish upstream release tags.
+          git diff --name-only c9c6da2786b6a0912215127e78e28fbc6650c85f HEAD -- '*.ts' '*.tsx' > /tmp/utopia-frontend-files
           mapfile -t files < /tmp/utopia-frontend-files
           if ((${#files[@]})); then
             bunx oxlint -c .oxlintrc.json "${files[@]#web/}"
@@ -119,7 +121,7 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose -f docker-compose.yml config --quiet
       - name: Set image version
-        run: echo "v1.0.0-rc.50-utopia-${GITHUB_SHA:0:12}" > VERSION
+        run: echo "v1.0.0-rc.51-utopia-${GITHUB_SHA:0:12}" > VERSION
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
       - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4
         with:
@@ -155,7 +157,7 @@ jobs:
           docker push "$IMAGE"
 
   migration:
-    name: Verify fresh install and rc.49/rc.50 upgrades
+    name: Verify fresh install and rc.49/rc.50 fork upgrades to rc.51
     needs: [image]
     runs-on: ubuntu-latest
     timeout-minutes: 15
