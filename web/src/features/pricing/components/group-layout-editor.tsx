@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Reorder } from 'motion/react'
-import { useState } from 'react'
+import { nanoid } from 'nanoid/non-secure'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AutoGroupOrderItem } from '@/components/auto-group-order-item'
@@ -102,6 +103,7 @@ function GroupLayoutForm(props: {
   const queryClient = useQueryClient()
   const update = useUpdateOption()
   const [layout, setLayout] = useState(props.initialLayout)
+  const newDrawerToFocus = useRef<string | null>(null)
   const [drawerIds, setDrawerIds] = useState(
     () =>
       new Set(
@@ -154,16 +156,18 @@ function GroupLayoutForm(props: {
           type='button'
           variant='outline'
           onClick={() => {
-            const id = `drawer:${crypto.randomUUID()}`
+            // Display IDs also work on HTTP origins without crypto.randomUUID.
+            const id = `drawer:${nanoid()}`
+            newDrawerToFocus.current = id
             setDrawerIds((current) => new Set([...current, id]))
             setLayout((current) => [
-              ...current,
               {
                 id,
                 title: t('New drawer'),
                 groups: [],
                 default_open: false,
               },
+              ...current,
             ])
           }}
         >
@@ -218,6 +222,12 @@ function GroupLayoutForm(props: {
             {drawerIds.has(item.id) ? (
               <div className='w-full min-w-0 space-y-3'>
                 <Input
+                  ref={(input) => {
+                    if (input && newDrawerToFocus.current === item.id) {
+                      input.focus()
+                      newDrawerToFocus.current = null
+                    }
+                  }}
                   aria-label={t('Drawer name')}
                   maxLength={80}
                   value={item.title}

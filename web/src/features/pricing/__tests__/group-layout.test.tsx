@@ -44,6 +44,7 @@ const saved: PricingGroupLayoutItem[] = [
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function renderEditor() {
@@ -124,7 +125,7 @@ it('creates and renames a drawer, blocks blank names, and releases groups when a
   const user = userEvent.setup()
   await screen.findByRole('textbox', { name: 'Drawer name' })
   await user.click(screen.getByRole('button', { name: 'Add drawer' }))
-  const input = screen.getAllByRole('textbox', { name: 'Drawer name' })[1]
+  const input = screen.getAllByRole('textbox', { name: 'Drawer name' })[0]
   await user.clear(input)
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   await user.type(input, 'Supplier B')
@@ -172,4 +173,33 @@ it('keeps unsaved changes after a failed save and allows retry', async () => {
   expect(onClose).not.toHaveBeenCalled()
   await user.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+})
+
+it('adds visible, focused drawers without crypto.randomUUID and saves their distinct identities', async () => {
+  vi.stubGlobal('crypto', {})
+  const { put } = renderEditor()
+  const user = userEvent.setup()
+  await screen.findByRole('textbox', { name: 'Drawer name' })
+  await user.click(screen.getByRole('button', { name: 'Add drawer' }))
+  let inputs = screen.getAllByRole('textbox', { name: 'Drawer name' })
+  expect(inputs).toHaveLength(2)
+  expect(inputs[0]).toHaveValue('New drawer')
+  expect(inputs[0]).toHaveFocus()
+  await user.clear(inputs[0])
+  await user.type(inputs[0], 'Supplier B')
+  await user.click(screen.getByRole('button', { name: 'Add drawer' }))
+  inputs = screen.getAllByRole('textbox', { name: 'Drawer name' })
+  expect(inputs).toHaveLength(3)
+  expect(inputs[0]).toHaveValue('New drawer')
+  expect(inputs[0]).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(put).toHaveBeenCalledTimes(1))
+  const payload = JSON.parse(
+    (put.mock.calls[0][1] as { value: string }).value
+  ) as PricingGroupLayoutItem[]
+  expect(payload.slice(0, 2).map((item) => item.title)).toEqual([
+    'New drawer',
+    'Supplier B',
+  ])
+  expect(new Set(payload.map((item) => item.id)).size).toBe(payload.length)
 })
