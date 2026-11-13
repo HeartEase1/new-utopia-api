@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -132,6 +133,8 @@ func TestAlipayF2F(t *testing.T) {
 	assert.Equal(t, legacy.Money, order.Money)
 	assert.Zero(t, order.QuotaSnapshot)
 	assert.Zero(t, order.ExpiresAt)
+	assert.Zero(t, order.ReferralUserID)
+	assert.Zero(t, order.ReferralQuota)
 	assert.True(t, db.Migrator().HasColumn(&model.TopUp{}, "expires_at"))
 	assert.True(t, db.Migrator().HasIndex(&model.TopUp{}, "idx_top_ups_user_id"))
 	duplicate := order
@@ -503,8 +506,14 @@ func TestAlipayF2F(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, 1000000, quota(), scenario)
 			assert.Equal(t, 1000000, cached.Quota, scenario)
+			require.NoError(t, db.Model(&user).Update("aff_quota", 500000).Error)
+			require.NoError(t, user.TransferAffQuotaToQuota(500000))
+			cached, err = model.GetUserCache(user.Id)
+			require.NoError(t, err)
+			assert.Equal(t, 1500000, quota(), "referral transfer: "+scenario)
+			assert.Equal(t, 1500000, cached.Quota, "referral transfer: "+scenario)
 		}
-		assert.Equal(t, 1, replaced, "test must reach the post-commit cache replacement race")
+		assert.Equal(t, 2, replaced, "both payment and referral transfer must reach the post-commit cache replacement race")
 	})
 	t.Run("concurrent database settlements credit once without process mutex", func(t *testing.T) {
 		reset()
@@ -927,6 +936,249 @@ func TestAlipayF2F(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, live.Enabled, "database disable must override old environment settings")
 
+	})
+
+	t.Run("online topups award referral earnings once within the registration window", func(t *testing.T) {
+		common.OptionMapRWMutex.Lock()
+		oldOptions := common.OptionMap
+		common.OptionMap = map[string]string{}
+		common.OptionMapRWMutex.Unlock()
+		defer func() {
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap = oldOptions
+			common.OptionMapRWMutex.Unlock()
+		}()
+		oldSettings := operation_setting.GetReferralSetting()
+		oldPayment := *operation_setting.GetPaymentSetting()
+		oldInviter := common.QuotaForInviter
+		common.QuotaForInviter = 999999
+		payment := operation_setting.GetPaymentSetting()
+		payment.ComplianceConfirmed, payment.ComplianceTermsVersion = true, operation_setting.CurrentComplianceTermsVersion
+		require.NoError(t, model.UpdateOption("referral_setting.percent", "12.5"))
+		require.NoError(t, model.UpdateOption("referral_setting.days", "30"))
+		defer func() {
+			common.QuotaForInviter = oldInviter
+			*payment = oldPayment
+			require.NoError(t, model.UpdateOption("referral_setting.percent", fmt.Sprint(oldSettings.Percent)))
+			require.NoError(t, model.UpdateOption("referral_setting.days", fmt.Sprint(oldSettings.Days)))
+		}()
+		for _, invalid := range []struct{ key, value string }{
+			{"referral_setting.percent", "-1"}, {"referral_setting.percent", "101"},
+			{"referral_setting.percent", "NaN"}, {"referral_setting.percent", "+Inf"},
+			{"referral_setting.days", "0"}, {"referral_setting.days", "1.5"}, {"referral_setting.days", "3651"},
+			{"QuotaForInviter", "500000"},
+		} {
+			require.Error(t, model.UpdateOption(invalid.key, invalid.value), "%s=%s", invalid.key, invalid.value)
+		}
+		require.NoError(t, db.Callback().Update().Before("gorm:update").Register("referral_setting_failure", func(tx *gorm.DB) {
+			if tx.Statement.Table == "options" {
+				tx.AddError(errors.New("injected referral settings failure"))
+			}
+		}))
+		updateErr := model.UpdateOption("referral_setting.percent", "20")
+		require.NoError(t, db.Callback().Update().Remove("referral_setting_failure"))
+		require.Error(t, updateErr)
+		assert.Equal(t, 12.5, operation_setting.GetReferralSetting().Percent)
+		var savedOption model.Option
+		require.NoError(t, db.Where(&model.Option{Key: "referral_setting.percent"}).First(&savedOption).Error)
+		assert.Equal(t, "12.5", savedOption.Value)
+		inviter := model.User{Username: "referrer", AffCode: "rfr1", Status: common.UserStatusEnabled, AffQuota: 700000, AffHistoryQuota: 700000}
+		require.NoError(t, db.Create(&inviter).Error)
+		invited := model.User{Username: "referred", AffCode: "rfd1", Status: common.UserStatusEnabled, InviterId: inviter.Id, CreatedAt: common.GetTimestamp() - 86400, Group: "default"}
+		require.NoError(t, db.Create(&invited).Error)
+		invited.FinishInsert(inviter.Id)
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		assert.Equal(t, 1, inviter.AffCount)
+		assert.Equal(t, 700000, inviter.AffQuota, "legacy inviter signup reward must no longer apply")
+		oauthInvited := model.User{Username: "oauth_referred", AffCode: "rfd2", Status: common.UserStatusEnabled, InviterId: inviter.Id, Group: "default"}
+		require.NoError(t, db.Create(&oauthInvited).Error)
+		oauthInvited.FinalizeOAuthUserCreation(inviter.Id)
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		assert.Equal(t, 2, inviter.AffCount)
+		assert.Equal(t, 700000, inviter.AffQuota, "OAuth registration must not award the old bonus either")
+		// Use one USD of credited quota for every provider, despite different units.
+		providers := []string{model.PaymentProviderAlipayF2F, model.PaymentProviderEpay, model.PaymentProviderStripe, model.PaymentProviderCreem, model.PaymentProviderWaffo, model.PaymentProviderWaffoPancake}
+		settle := func(provider, trade string) error {
+			switch provider {
+			case model.PaymentProviderAlipayF2F:
+				return model.RechargeAlipayF2F(trade, decimal.NewFromInt(1), "")
+			case model.PaymentProviderEpay:
+				_, err := model.RechargeEpay(trade, "alipay", "")
+				return err
+			case model.PaymentProviderStripe:
+				return model.Recharge(trade, "test-customer", "")
+			case model.PaymentProviderCreem:
+				return model.RechargeCreem(trade, "", "", "")
+			case model.PaymentProviderWaffo:
+				return model.RechargeWaffo(trade, "")
+			default:
+				return model.RechargeWaffoPancake(trade)
+			}
+		}
+		for i, provider := range providers {
+			order := model.TopUp{UserId: invited.Id, Amount: 1, Money: 1, QuotaSnapshot: 500000, TradeNo: "referral-" + provider, PaymentMethod: provider, PaymentProvider: provider, Status: common.TopUpStatusPending}
+			if provider == model.PaymentProviderCreem {
+				order.Amount = 500000
+			}
+			require.NoError(t, order.Insert())
+			require.NoError(t, settle(provider, order.TradeNo))
+			_ = settle(provider, order.TradeNo) // Some gateways return an already-complete error.
+			require.NoError(t, db.First(&inviter, inviter.Id).Error)
+			assert.Equal(t, 700000+(i+1)*62500, inviter.AffQuota)
+			assert.Equal(t, inviter.AffQuota, inviter.AffHistoryQuota)
+			require.NoError(t, db.First(&order, order.Id).Error)
+			assert.Equal(t, inviter.Id, order.ReferralUserID)
+			assert.EqualValues(t, 62500, order.ReferralQuota)
+		}
+		// A repeated manual completion cannot add a second rebate either.
+		require.NoError(t, model.ManualCompleteTopUp("referral-alipay_f2f", ""))
+		starting := inviter.AffQuota
+		for _, tc := range []struct {
+			name         string
+			age          int64
+			percent      string
+			self, manual bool
+		}{
+			{"expired", 31 * 86400, "12.5", false, false},
+			{"boundary", 30 * 86400, "12.5", false, false},
+			{"unknown-registration", 0, "12.5", false, false},
+			{"disabled", 86400, "0", false, false},
+			{"self-invite", 86400, "12.5", true, false},
+			{"manual", 86400, "12.5", false, true},
+		} {
+			created := common.GetTimestamp() - tc.age
+			if tc.age == 0 {
+				created = 0
+			}
+			parent := inviter.Id
+			if tc.self {
+				parent = invited.Id
+			}
+			require.NoError(t, db.Model(&invited).Updates(map[string]any{"inviter_id": parent, "created_at": created}).Error)
+			require.NoError(t, model.UpdateOption("referral_setting.percent", tc.percent))
+			o := model.TopUp{UserId: invited.Id, Amount: 1, Money: 1, QuotaSnapshot: 500000, TradeNo: "referral-" + tc.name, PaymentMethod: model.PaymentProviderAlipayF2F, PaymentProvider: model.PaymentProviderAlipayF2F, Status: common.TopUpStatusPending}
+			require.NoError(t, o.Insert())
+			if tc.manual {
+				require.NoError(t, model.ManualCompleteTopUp(o.TradeNo, ""))
+			} else {
+				require.NoError(t, settle(model.PaymentProviderAlipayF2F, o.TradeNo))
+			}
+			require.NoError(t, db.First(&o, o.Id).Error)
+			assert.Zero(t, o.ReferralQuota, tc.name)
+		}
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		assert.Equal(t, starting, inviter.AffQuota)
+		// Two callbacks for the same order still award only once on every SQL engine.
+		require.NoError(t, db.Model(&invited).Updates(map[string]any{"inviter_id": inviter.Id, "created_at": common.GetTimestamp() - 86400}).Error)
+		concurrent := model.TopUp{UserId: invited.Id, Money: 1, QuotaSnapshot: 500000, TradeNo: "referral-concurrent", PaymentMethod: model.PaymentProviderAlipayF2F, PaymentProvider: model.PaymentProviderAlipayF2F, Status: common.TopUpStatusPending}
+		require.NoError(t, concurrent.Insert())
+		errs := make(chan error, 2)
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Go(func() { errs <- settle(model.PaymentProviderAlipayF2F, concurrent.TradeNo) })
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		assert.Equal(t, starting+62500, inviter.AffQuota)
+		newReferralOrder := func(name string, quota int64) model.TopUp {
+			o := model.TopUp{UserId: invited.Id, Money: 1, QuotaSnapshot: quota, TradeNo: "referral-" + name, PaymentMethod: model.PaymentProviderAlipayF2F, PaymentProvider: model.PaymentProviderAlipayF2F, Status: common.TopUpStatusPending}
+			require.NoError(t, o.Insert())
+			return o
+		}
+		// Neither a mismatched amount nor a failed rebate write can partially settle.
+		atomicOrder := newReferralOrder("atomic", 500000)
+		require.NoError(t, db.First(&invited, invited.Id).Error)
+		payerBefore, earningsBefore := invited.Quota, inviter.AffQuota
+		require.ErrorIs(t, model.RechargeAlipayF2F(atomicOrder.TradeNo, decimal.NewFromInt(2), ""), model.ErrAlipayAmountMismatch)
+		require.NoError(t, db.Model(&inviter).Update("aff_history", common.MaxWalletQuota).Error)
+		require.Error(t, settle(model.PaymentProviderAlipayF2F, atomicOrder.TradeNo))
+		require.NoError(t, db.First(&atomicOrder, atomicOrder.Id).Error)
+		require.NoError(t, db.First(&invited, invited.Id).Error)
+		assert.Equal(t, common.TopUpStatusPending, atomicOrder.Status)
+		assert.Zero(t, atomicOrder.ReferralQuota)
+		assert.Equal(t, payerBefore, invited.Quota)
+		require.NoError(t, db.Model(&inviter).Update("aff_history", earningsBefore).Error)
+		// Failure to save the per-order record also rolls back both balances.
+		require.NoError(t, db.Callback().Update().Before("gorm:update").Register("referral_ledger_failure", func(tx *gorm.DB) {
+			if values, ok := tx.Statement.Dest.(map[string]any); ok && tx.Statement.Table == "top_ups" {
+				if _, exists := values["referral_quota"]; exists {
+					tx.AddError(errors.New("injected referral ledger failure"))
+				}
+			}
+		}))
+		settleErr := settle(model.PaymentProviderAlipayF2F, atomicOrder.TradeNo)
+		require.NoError(t, db.Callback().Update().Remove("referral_ledger_failure"))
+		require.Error(t, settleErr)
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		require.NoError(t, db.First(&invited, invited.Id).Error)
+		assert.Equal(t, earningsBefore, inviter.AffQuota)
+		assert.Equal(t, payerBefore, invited.Quota)
+		require.NoError(t, settle(model.PaymentProviderAlipayF2F, atomicOrder.TradeNo))
+		// Configured periods and rates apply at confirmation, with downward rounding.
+		for i, tc := range []struct {
+			percent, days string
+			quota, want   int64
+		}{
+			{"12.5", "30", 7, 0}, {"12.5", "30", 15, 1},
+			{"100", "30", 15, 15}, {"100", "1", 15, 0},
+		} {
+			require.NoError(t, model.UpdateOption("referral_setting.percent", tc.percent))
+			require.NoError(t, model.UpdateOption("referral_setting.days", tc.days))
+			o := newReferralOrder(fmt.Sprintf("rounding-%d", i), tc.quota)
+			require.NoError(t, settle(model.PaymentProviderAlipayF2F, o.TradeNo))
+			require.NoError(t, db.First(&o, o.Id).Error)
+			assert.Equal(t, tc.want, o.ReferralQuota)
+		}
+		require.NoError(t, model.UpdateOption("referral_setting.percent", "12.5"))
+		require.NoError(t, model.UpdateOption("referral_setting.days", "30"))
+		for _, disabled := range []bool{true, false} {
+			parent := inviter.Id
+			if disabled {
+				require.NoError(t, db.Model(&inviter).Update("status", common.UserStatusDisabled).Error)
+			} else {
+				parent = -1
+			}
+			require.NoError(t, db.Model(&invited).Update("inviter_id", parent).Error)
+			o := newReferralOrder(fmt.Sprintf("ineligible-inviter-%t", disabled), 500000)
+			require.NoError(t, settle(model.PaymentProviderAlipayF2F, o.TradeNo))
+			require.NoError(t, db.First(&o, o.Id).Error)
+			assert.Zero(t, o.ReferralQuota)
+		}
+		require.NoError(t, db.Model(&inviter).Update("status", common.UserStatusEnabled).Error)
+		require.NoError(t, db.Model(&invited).Update("inviter_id", inviter.Id).Error)
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		earningsBefore = inviter.AffQuota
+		orders := []model.TopUp{newReferralOrder("parallel-a", 500000), newReferralOrder("parallel-b", 500000)}
+		errs = make(chan error, len(orders))
+		for _, o := range orders {
+			wg.Go(func() { errs <- settle(model.PaymentProviderAlipayF2F, o.TradeNo) })
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		assert.Equal(t, earningsBefore+125000, inviter.AffQuota, "concurrent orders must not lose either rebate")
+		// A transfer preserves lifetime earnings and changes only the two balances.
+		lifetime := inviter.AffHistoryQuota
+		beforeTransfer := inviter.AffQuota
+		require.NoError(t, inviter.TransferAffQuotaToQuota(500000))
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		assert.Equal(t, 500000, inviter.Quota)
+		assert.Equal(t, beforeTransfer-500000, inviter.AffQuota)
+		assert.Equal(t, lifetime, inviter.AffHistoryQuota)
+		require.Error(t, inviter.TransferAffQuotaToQuota(-500000))
+		require.Error(t, inviter.TransferAffQuotaToQuota(common.MaxWalletQuota))
+		require.NoError(t, db.Model(&inviter).Update("quota", common.MaxWalletQuota).Error)
+		beforeTransfer = inviter.AffQuota
+		require.Error(t, inviter.TransferAffQuotaToQuota(500000))
+		require.NoError(t, db.First(&inviter, inviter.Id).Error)
+		assert.Equal(t, beforeTransfer, inviter.AffQuota, "overflow must not consume earnings")
 	})
 
 	// Verify malformed JSON does not create an order.

@@ -96,7 +96,7 @@ func RechargeAlipayF2F(tradeNo string, paidAmount decimal.Decimal, callerIP stri
 		if result.RowsAffected != 1 {
 			return ErrTopUpStatusInvalid
 		}
-		if err := creditTopUpQuota(tx, topUp.UserId, credited, nil, &cacheCredit); err != nil {
+		if err := creditOnlineTopUpQuota(tx, &topUp, credited, nil, &cacheCredit); err != nil {
 			return err
 		}
 		quota = credited

@@ -28,6 +28,9 @@ type TopUp struct {
 	ExpiresAt    int64  `json:"-" gorm:"default:0"`
 	CompleteTime int64  `json:"complete_time"`
 	Status       string `json:"status"`
+	// Persisted with the successful payment; repeated callbacks cannot award twice.
+	ReferralUserID int   `json:"-" gorm:"default:0"`
+	ReferralQuota  int64 `json:"-" gorm:"default:0"`
 }
 
 const (
@@ -226,7 +229,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheCredit)
+		return creditOnlineTopUpQuota(tx, topUp, quotaToAdd, nil, &cacheCredit)
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
@@ -285,7 +288,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		if err != nil || quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quota, map[string]any{
+		return creditOnlineTopUpQuota(tx, topUp, quota, map[string]any{
 			"stripe_customer": customerId,
 		}, &cacheCredit)
 	})
@@ -596,7 +599,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			}
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quota, updateFields, &cacheCredit)
+		return creditOnlineTopUpQuota(tx, topUp, quota, updateFields, &cacheCredit)
 	})
 
 	if err != nil {
@@ -655,7 +658,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheCredit)
+		return creditOnlineTopUpQuota(tx, topUp, quotaToAdd, nil, &cacheCredit)
 	})
 
 	if err != nil {
@@ -716,7 +719,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheCredit)
+		return creditOnlineTopUpQuota(tx, topUp, quotaToAdd, nil, &cacheCredit)
 	})
 
 	if err != nil {

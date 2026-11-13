@@ -66,7 +66,7 @@ jobs:
       - name: Upstream rc.50 integration regressions
         run: |
           go test ./model ./service ./relay/... ./pkg/billingexpr/... ./pkg/jsplugin/... ./plugins/... ./router/... ./setting/... ./common/... -count=1
-          go test ./controller -run 'Plugin|Sensitive|SystemTask|Epay' -count=1
+          go test ./controller -run 'Plugin|Sensitive|SystemTask|Epay|OAuthRegistrationPersistsInviter' -count=1
           go test ./middleware -run 'AccessToken|Alipay|SessionCookieOrigin' -count=1
           (cd relaykit && GOWORK=off go build ./...)
           (cd tokenkit && GOWORK=off go build ./...)
@@ -85,7 +85,7 @@ jobs:
           bun-version: '1.4.4'
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun run test src/features/wallet src/features/system-settings/integrations src/features/request-processing src/features/system-info src/features/task-plugins
+      - run: bun run test src/features/wallet src/features/system-settings/integrations src/features/system-settings/general/__tests__/pre-consume-settings.test.tsx src/features/request-processing src/features/system-info src/features/task-plugins
       - name: Lint modified frontend files
         shell: bash
         run: |
@@ -155,7 +155,7 @@ jobs:
           docker push "$IMAGE"
 
   migration:
-    name: Verify rc.50 fresh install and rc.49 upgrade
+    name: Verify fresh install and rc.49/rc.50 upgrades
     needs: [image]
     runs-on: ubuntu-latest
     timeout-minutes: 15

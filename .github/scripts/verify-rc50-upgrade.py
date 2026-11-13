@@ -1,4 +1,4 @@
-"""Exercise released rc.49 -> rc.50 startup on disposable CI databases only."""
+"""Exercise fresh installs and released rc.49/rc.50 upgrades on disposable CI databases."""
 import json
 import os
 from pathlib import Path
@@ -63,12 +63,16 @@ def indexes(engine, database, table):
     return sql(engine, database, f"SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='{table}' ORDER BY indexname")
 
 
-old_image = 'ghcr.io/heartease1/new-utopia-api:sha-1217036ac92c61ef03f84c23bcab61628fa293be-amd64'
+old_images = {
+    'upgrade_rc49': 'ghcr.io/heartease1/new-utopia-api:sha-1217036ac92c61ef03f84c23bcab61628fa293be-amd64',
+    'upgrade_rc50': 'ghcr.io/heartease1/new-utopia-api:sha-dd808b118c53f0837803c47b19bb09af57998611-amd64',
+}
 new_image = os.environ['UPGRADE_IMAGE']
-run('docker', 'pull', old_image)
+for old_image in old_images.values():
+    run('docker', 'pull', old_image)
 run('docker', 'pull', new_image)
 for engine in ['sqlite', 'mysql', 'postgres']:
-    for mode in ['fresh', 'upgrade']:
+    for mode in ['fresh', *old_images]:
         # sudo runs this script in CI so SQLite files created by the image are writable.
         with tempfile.TemporaryDirectory(prefix='utopia-rc50-') as tmp:
             directory = Path(tmp)
@@ -88,11 +92,11 @@ for engine in ['sqlite', 'mysql', 'postgres']:
                 else:
                     env['SQL_DSN'] = f'postgres://utopia:test-only@127.0.0.1:5432/{main}?sslmode=disable'
                     env['LOG_SQL_DSN'] = f'postgres://utopia:test-only@127.0.0.1:5432/{logs}?sslmode=disable'
-            boot(old_image if mode == 'upgrade' else new_image, directory, env)
+            boot(old_images.get(mode, new_image), directory, env)
             version_query = 'SELECT sqlite_version()' if engine == 'sqlite' else 'SELECT version()'
             print(engine, mode, sql(engine, main, version_query), flush=True)
             # Representative existing account, channel, API key, balance, paid order and log.
-            sql(engine, main, "INSERT INTO users (username,password,quota,status,role) VALUES ('upgrade_user','test-only-disabled',1234567,2,1)")
+            sql(engine, main, "INSERT INTO users (username,password,quota,status,role,aff_quota,aff_history,created_at) VALUES ('upgrade_user','test-only-disabled',1234567,2,1,500000,1000000,1700000000)")
             uid = sql(engine, main, "SELECT id FROM users WHERE username='upgrade_user'")
             quote = '`' if engine == 'mysql' else '"'
             sql(engine, main, f"INSERT INTO channels (name,type,{quote}key{quote},status,models) VALUES ('upgrade_channel',1,'test-only-disabled',2,'gpt-test')")
@@ -102,7 +106,7 @@ for engine in ['sqlite', 'mysql', 'postgres']:
             for key, value in [('AlipayF2FConfigSecret', '{}'), ('CheckSensitiveEnabled', 'true'), ('CheckSensitiveOnPromptEnabled', 'true'), ('SensitiveWords', 'rc50-migration-blocked-word')]:
                 sql(engine, main, f"INSERT INTO options ({quote}key{quote},value) VALUES ('{key}','{value}')")
             queries = [
-                "SELECT username,password,quota,status FROM users WHERE username='upgrade_user'",
+                "SELECT username,password,quota,status,aff_quota,aff_history,created_at FROM users WHERE username='upgrade_user'",
                 f"SELECT name,type,{quote}key{quote},status,models FROM channels WHERE name='upgrade_channel'",
                 f"SELECT user_id,{quote}key{quote},name,status,remain_quota FROM tokens WHERE name='upgrade_token'",
                 "SELECT user_id,trade_no,amount,money,status,payment_method,payment_provider,quota_snapshot,expires_at FROM top_ups WHERE trade_no='rc50-paid-order'",
@@ -115,6 +119,12 @@ for engine in ['sqlite', 'mysql', 'postgres']:
             for restart in range(2):
                 boot(new_image, directory, env)
                 assert [sql(engine, main, query) for query in queries] == before
+                assert sql(engine, main, "SELECT referral_user_id,referral_quota FROM top_ups WHERE trade_no='rc50-paid-order'") == '0\t0'
+                # Released earnings columns were 32-bit on MySQL/PostgreSQL.
+                # Prove widening preserves data and really accepts larger values.
+                sql(engine, main, f"UPDATE users SET aff_quota=3000000000,aff_history=4000000000 WHERE id={uid}")
+                assert sql(engine, main, f"SELECT aff_quota,aff_history FROM users WHERE id={uid}") == '3000000000\t4000000000'
+                sql(engine, main, f"UPDATE users SET aff_quota=500000,aff_history=1000000 WHERE id={uid}")
                 assert sql(engine, logs, "SELECT user_id,content,quota FROM logs WHERE content='rc50-migration-log'") == log_before
                 assert (directory / 'key-volume-marker').read_text() == 'preserve-data-volume'
                 for table, names in old_indexes.items():
@@ -136,4 +146,4 @@ for engine in ['sqlite', 'mysql', 'postgres']:
                     pass
                 else:
                     raise AssertionError('duplicate API key was accepted')
-                print(f'PASS {engine} {mode} restart={restart + 1}: data, indexes, unique order, filter migration, logs, volume', flush=True)
+                print(f'PASS {engine} {mode} restart={restart + 1}: data, referral balances, no backfill, indexes, unique order, filter migration, logs, volume', flush=True)

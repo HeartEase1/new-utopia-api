@@ -237,6 +237,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if err := operation_setting.ValidateReferralOption(key, value); err != nil {
+		return err
+	}
 	if key == AlipayF2FOptionKey {
 		return common.NewMessage("Use the Alipay settings page to update this configuration.")
 	}
@@ -289,6 +292,10 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == "referral_setting.percent" || key == "referral_setting.days" {
+		// Monetary settings must not become active when persistence failed.
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}

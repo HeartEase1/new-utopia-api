@@ -53,7 +53,35 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const quotaSchema = z.object({
   QuotaForNewUser: z.coerce.number().min(0),
-  QuotaForInviter: z.coerce.number().min(0),
+  referral_setting: z.object({
+    percent: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.coerce
+        .number({ error: () => i18next.t('Please enter a valid number') })
+        .min(0, {
+          error: () =>
+            i18next.t('Referral percentage must be between 0 and 100'),
+        })
+        .max(100, {
+          error: () =>
+            i18next.t('Referral percentage must be between 0 and 100'),
+        })
+    ),
+    days: z.coerce
+      .number({ error: () => i18next.t('Please enter a valid number') })
+      .int({
+        error: () =>
+          i18next.t('Referral period must be between 1 and 3650 whole days'),
+      })
+      .min(1, {
+        error: () =>
+          i18next.t('Referral period must be between 1 and 3650 whole days'),
+      })
+      .max(3650, {
+        error: () =>
+          i18next.t('Referral period must be between 1 and 3650 whole days'),
+      }),
+  }),
   QuotaForInvitee: z.coerce.number().min(0),
   TopUpLink: z.string(),
   quota_setting: z.object({
@@ -226,13 +254,45 @@ export function QuotaSettingsSection({
 
             <FormField
               control={form.control}
-              name='QuotaForInviter'
+              name='referral_setting.percent'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Inviter Reward')}</FormLabel>
+                  <FormLabel>{t('Referral top-up rebate (%)')}</FormLabel>
                   <FormControl>
                     <Input
                       type='number'
+                      min={0}
+                      max={100}
+                      step='any'
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      disabled={!complianceConfirmed}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Percentage of credited online top-ups added to the inviter’s referral earnings. 0 disables rebates. Registration no longer rewards the inviter.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='referral_setting.days'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Referral rebate period (days)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      max={3650}
+                      step={1}
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}
@@ -242,10 +302,7 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Quota given to users who invite others ({{formattedQuota}})',
-                      {
-                        formattedQuota: formatQuotaInputValue(field.value),
-                      }
+                      'Starts at the invited user’s registration. Each online top-up confirmed within this period earns a rebate at the current rate. Existing completed orders are not backfilled.'
                     )}
                   </FormDescription>
                   <FormMessage />

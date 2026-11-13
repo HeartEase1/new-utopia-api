@@ -272,7 +272,8 @@ export type ModelSettings = {
 
 export type BillingSettings = {
   QuotaForNewUser: number
-  QuotaForInviter: number
+  'referral_setting.percent': number
+  'referral_setting.days': number
   QuotaForInvitee: number
   TopUpLink: string
   'quota_setting.enable_free_model_pre_consume': boolean

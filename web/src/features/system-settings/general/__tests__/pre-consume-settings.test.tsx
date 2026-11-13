@@ -42,7 +42,7 @@ function Fixture() {
         <QuotaSettingsSection
           defaultValues={{
             QuotaForNewUser: 0,
-            QuotaForInviter: 0,
+            referral_setting: { percent: 0, days: 30 },
             QuotaForInvitee: 0,
             TopUpLink: '',
             quota_setting: {
@@ -77,6 +77,50 @@ async function renderSettings() {
 
 beforeEach(() => {
   vi.spyOn(api, 'put').mockResolvedValue({ data: { success: true } })
+})
+
+test('referral rate and period replace the inviter signup reward and save independently', async () => {
+  await renderSettings()
+  expect(
+    screen.queryByRole('spinbutton', { name: 'Inviter Reward' })
+  ).not.toBeInTheDocument()
+  const rate = screen.getByRole('spinbutton', {
+    name: 'Referral top-up rebate (%)',
+  })
+  const days = screen.getByRole('spinbutton', {
+    name: 'Referral rebate period (days)',
+  })
+  expect(rate).toHaveValue(0)
+  expect(days).toHaveValue(30)
+  fireEvent.change(rate, { target: { value: '12.5' } })
+  fireEvent.change(days, { target: { value: '60' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() => {
+    expect(api.put).toHaveBeenCalledWith('/api/option/', {
+      key: 'referral_setting.percent',
+      value: 12.5,
+    })
+    expect(api.put).toHaveBeenCalledWith('/api/option/', {
+      key: 'referral_setting.days',
+      value: 60,
+    })
+  })
+})
+
+test.each([
+  ['Referral top-up rebate (%)', '-1'],
+  ['Referral top-up rebate (%)', '101'],
+  ['Referral top-up rebate (%)', ''],
+  ['Referral rebate period (days)', '0'],
+  ['Referral rebate period (days)', '1.5'],
+  ['Referral rebate period (days)', '3651'],
+])('invalid referral field %s=%s prevents saving', async (name, value) => {
+  await renderSettings()
+  const input = screen.getByRole('spinbutton', { name })
+  fireEvent.change(input, { target: { value } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+  expect(api.put).not.toHaveBeenCalled()
 })
 
 test.each(['0.5', '1.5', '2.5', '0.0001'])(

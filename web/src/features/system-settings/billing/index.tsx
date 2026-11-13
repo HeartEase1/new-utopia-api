@@ -26,7 +26,8 @@ import {
 
 const defaultBillingSettings: BillingSettings = {
   QuotaForNewUser: 0,
-  QuotaForInviter: 0,
+  'referral_setting.percent': 0,
+  'referral_setting.days': 30,
   QuotaForInvitee: 0,
   TopUpLink: '',
   'quota_setting.enable_free_model_pre_consume': true,

@@ -61,7 +61,10 @@ const BILLING_SECTIONS = [
       <QuotaSettingsSection
         defaultValues={{
           QuotaForNewUser: settings.QuotaForNewUser,
-          QuotaForInviter: settings.QuotaForInviter,
+          referral_setting: {
+            percent: settings['referral_setting.percent'],
+            days: settings['referral_setting.days'],
+          },
           QuotaForInvitee: settings.QuotaForInvitee,
           TopUpLink: settings.TopUpLink,
           quota_setting: {
