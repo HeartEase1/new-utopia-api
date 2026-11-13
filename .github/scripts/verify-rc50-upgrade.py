@@ -120,8 +120,8 @@ for engine in ['sqlite', 'mysql', 'postgres']:
                 boot(new_image, directory, env)
                 assert [sql(engine, main, query) for query in queries] == before
                 assert sql(engine, main, "SELECT referral_user_id,referral_quota FROM top_ups WHERE trade_no='rc50-paid-order'") == '0\t0'
-                # Released earnings columns were 32-bit on MySQL/PostgreSQL.
-                # Prove widening preserves data and really accepts larger values.
+                # GORM maps Go int to bigint on the supported 64-bit builds.
+                # Prove fresh/upgraded earnings columns retain that capacity.
                 sql(engine, main, f"UPDATE users SET aff_quota=3000000000,aff_history=4000000000 WHERE id={uid}")
                 assert sql(engine, main, f"SELECT aff_quota,aff_history FROM users WHERE id={uid}") == '3000000000\t4000000000'
                 sql(engine, main, f"UPDATE users SET aff_quota=500000,aff_history=1000000 WHERE id={uid}")
