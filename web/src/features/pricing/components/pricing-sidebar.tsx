@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronDown, RotateCcw } from 'lucide-react'
-import { memo, useMemo, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { formatNumber } from '@/lib/format'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
@@ -38,6 +39,10 @@ import {
   getQuotaTypeLabels,
 } from '../constants'
 import { getModelQuotaType, parseTags } from '../lib/filters'
+import {
+  completePricingGroupLayout,
+  type PricingGroupLayoutItem,
+} from '../lib/group-layout'
 import type { PricingModel, PricingVendor } from '../types'
 
 type FilterOption = {
@@ -53,6 +58,7 @@ type FilterSectionProps = {
   value: string
   options: FilterOption[]
   onChange: (value: string) => void
+  children?: ReactNode
 }
 
 export interface PricingSidebarProps {
@@ -68,6 +74,7 @@ export interface PricingSidebarProps {
   onTagChange: (value: string) => void
   vendors: PricingVendor[]
   groups: string[]
+  groupLayout?: PricingGroupLayoutItem[]
   groupRatios?: Record<string, number>
   tags: string[]
   models: PricingModel[]
@@ -133,14 +140,63 @@ function FilterSection(props: FilterSectionProps) {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className='flex flex-wrap gap-1.5'>
-          {props.options.map((option) => (
-            <FilterChip
-              key={option.value}
-              option={option}
-              active={props.value === option.value}
-              onClick={() => props.onChange(option.value)}
-            />
-          ))}
+          {props.children ??
+            props.options.map((option) => (
+              <FilterChip
+                key={option.value}
+                option={option}
+                active={props.value === option.value}
+                onClick={() => props.onChange(option.value)}
+              />
+            ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function GroupDrawer(props: {
+  item: PricingGroupLayoutItem
+  selected: string
+  options: Map<string, FilterOption>
+  onChange: (group: string) => void
+}) {
+  const [open, setOpen] = useState(
+    props.item.default_open || props.item.groups.includes(props.selected)
+  )
+  useEffect(() => {
+    if (props.item.groups.includes(props.selected)) setOpen(true)
+  }, [props.selected, props.item.groups])
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className='w-full min-w-0 rounded-lg border px-2'
+    >
+      <CollapsibleTrigger className='group flex w-full min-w-0 items-center gap-2 py-2 text-left text-xs font-medium'>
+        <span className='min-w-0 flex-1 truncate' title={props.item.title}>
+          {props.item.title}
+        </span>{' '}
+        <span className='text-muted-foreground'>
+          {formatNumber(props.item.groups.length)}
+        </span>
+        <ChevronDown className='size-3.5 shrink-0 transition-transform group-data-[panel-open]:rotate-180' />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className='flex flex-wrap gap-1.5 pb-2'>
+          {props.item.groups.map((group) => {
+            const option = props.options.get(group)
+            return (
+              option && (
+                <FilterChip
+                  key={group}
+                  option={option}
+                  active={props.selected === group}
+                  onClick={() => props.onChange(group)}
+                />
+              )
+            )
+          })}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -206,6 +262,13 @@ export const PricingSidebar = memo(function PricingSidebar(
       suffix: formatGroupRatio(props.groupRatios?.[group]),
     })),
   ]
+  const groupLayout = useMemo(
+    () => completePricingGroupLayout(props.groupLayout ?? [], props.groups),
+    [props.groupLayout, props.groups]
+  )
+  const groupOptionMap = new Map(
+    groupOptions.map((option) => [option.value, option])
+  )
 
   const quotaOptions: FilterOption[] = [
     {
@@ -292,7 +355,35 @@ export const PricingSidebar = memo(function PricingSidebar(
           value={props.groupFilter}
           options={groupOptions}
           onChange={props.onGroupChange}
-        />
+        >
+          <FilterChip
+            option={groupOptions[0]}
+            active={props.groupFilter === FILTER_ALL}
+            onClick={() => props.onGroupChange(FILTER_ALL)}
+          />
+          {groupLayout.map((item) =>
+            item.title ? (
+              <GroupDrawer
+                key={item.id}
+                item={item}
+                selected={props.groupFilter}
+                options={groupOptionMap}
+                onChange={props.onGroupChange}
+              />
+            ) : (
+              item.groups.map((group) => (
+                <FilterChip
+                  key={group}
+                  option={
+                    groupOptionMap.get(group) ?? { value: group, label: group }
+                  }
+                  active={props.groupFilter === group}
+                  onClick={() => props.onGroupChange(group)}
+                />
+              ))
+            )
+          )}
+        </FilterSection>
         <FilterSection
           title={t('All Vendors')}
           value={props.vendorFilter}

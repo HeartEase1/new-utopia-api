@@ -132,6 +132,7 @@ export type PricingData = {
   usable_group: Record<string, { desc: string; ratio: number }>
   supported_endpoint: Record<string, string>
   auto_groups: string[]
+  group_layout?: import('./lib/group-layout').PricingGroupLayoutItem[]
 }
 
 export type TokenUnit = 'M' | 'K'

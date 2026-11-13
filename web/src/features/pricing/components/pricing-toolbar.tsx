@@ -46,6 +46,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 
 import { getSortLabels, type SortOption, type ViewMode } from '../constants'
+import type { PricingGroupLayoutItem } from '../lib/group-layout'
 import type { PricingModel, PricingVendor, TokenUnit } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 
@@ -72,6 +73,7 @@ export interface PricingToolbarProps {
   onTagChange: (value: string) => void
   vendors: PricingVendor[]
   groups: string[]
+  groupLayout?: PricingGroupLayoutItem[]
   groupRatios?: Record<string, number>
   tags: string[]
   models: PricingModel[]
@@ -216,6 +218,7 @@ export function PricingToolbar(props: PricingToolbarProps) {
               onTagChange={props.onTagChange}
               vendors={props.vendors}
               groups={props.groups}
+              groupLayout={props.groupLayout}
               groupRatios={props.groupRatios}
               tags={props.tags}
               models={props.models}

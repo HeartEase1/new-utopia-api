@@ -16,11 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
+import { Button } from '@/components/ui/button'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   LoadingSkeleton,
@@ -36,8 +39,14 @@ import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 
+const GroupLayoutEditor = lazy(() => import('./components/group-layout-editor'))
+
 export function Pricing() {
   const { t } = useTranslation()
+  const canArrange = useAuthStore(
+    (state) => (state.auth.user?.role ?? 0) >= ROLE.SUPER_ADMIN
+  )
+  const [arrangingGroups, setArrangingGroups] = useState(false)
   const [selectedModelName, setSelectedModelName] = useState<string | null>(
     null
   )
@@ -49,6 +58,7 @@ export function Pricing() {
     usableGroup,
     endpointMap,
     autoGroups,
+    groupLayout,
     isLoading,
     priceRate,
     usdExchangeRate,
@@ -200,6 +210,16 @@ export function Pricing() {
               )}
               className='mx-auto mt-4 max-w-2xl sm:mt-6'
             />
+            {canArrange && (
+              <Button
+                variant='outline'
+                size='sm'
+                className='mt-3'
+                onClick={() => setArrangingGroups(true)}
+              >
+                {t('Arrange groups')}
+              </Button>
+            )}
           </header>
 
           <div className='grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'>
@@ -216,6 +236,7 @@ export function Pricing() {
               onTagChange={setTagFilter}
               vendors={vendors || []}
               groups={availableGroups}
+              groupLayout={groupLayout}
               groupRatios={groupRatio}
               tags={availableTags}
               models={models || []}
@@ -248,6 +269,7 @@ export function Pricing() {
                 onTagChange={setTagFilter}
                 vendors={vendors || []}
                 groups={availableGroups}
+                groupLayout={groupLayout}
                 groupRatios={groupRatio}
                 tags={availableTags}
                 models={models || []}
@@ -260,6 +282,11 @@ export function Pricing() {
             </main>
           </div>
 
+          {canArrange && arrangingGroups && (
+            <Suspense fallback={null}>
+              <GroupLayoutEditor onClose={() => setArrangingGroups(false)} />
+            </Suspense>
+          )}
           {selectedModel && (
             <ModelDetailsDrawer
               open={Boolean(selectedModel)}

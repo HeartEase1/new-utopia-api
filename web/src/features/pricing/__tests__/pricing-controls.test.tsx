@@ -62,6 +62,60 @@ function toolbarProps(): PricingToolbarProps {
 }
 
 describe('pricing controls', () => {
+  it('shows a supplier drawer collapsed and selects a member after expansion', async () => {
+    const props = toolbarProps()
+    const onGroupChange = vi.fn()
+    render(
+      <PricingSidebar
+        {...props}
+        onGroupChange={onGroupChange}
+        {...{
+          groupLayout: [
+            {
+              id: 'supplier',
+              title: 'Supplier A',
+              groups: ['premium'],
+              default_open: false,
+            },
+            { id: 'base', title: '', groups: ['default'], default_open: true },
+          ],
+        }}
+      />
+    )
+    const drawer = screen.getByRole('button', { name: 'Supplier A 1' })
+    expect(drawer).toHaveAttribute('aria-expanded', 'false')
+    expect(
+      screen.queryByRole('button', { name: /premium/ })
+    ).not.toBeInTheDocument()
+    await userEvent.click(drawer)
+    await userEvent.click(screen.getByRole('button', { name: /premium/ }))
+    expect(onGroupChange).toHaveBeenCalledWith('premium')
+  })
+
+  it('automatically reveals the group selected in the URL inside a collapsed drawer', () => {
+    render(
+      <PricingSidebar
+        {...toolbarProps()}
+        groupFilter='premium'
+        groupLayout={[
+          {
+            id: 'supplier',
+            title: 'Supplier A',
+            groups: ['premium'],
+            default_open: false,
+          },
+        ]}
+      />
+    )
+    expect(
+      screen.getByRole('button', { name: 'Supplier A 1' })
+    ).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /premium/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  })
+
   it.each<{
     name: string
     pricing: Partial<PricingModel>
@@ -363,13 +417,26 @@ describe('pricing controls', () => {
   })
 
   it('opens mobile filters from the left, selects a group, and restores focus on close', async () => {
-    const props = toolbarProps()
+    const props = {
+      ...toolbarProps(),
+      groupLayout: [
+        {
+          id: 'supplier',
+          title: 'Supplier A',
+          groups: ['premium'],
+          default_open: false,
+        },
+      ],
+    }
     const user = userEvent.setup()
     const { rerender } = render(<PricingToolbar {...props} />)
     await user.click(screen.getByRole('button', { name: 'Filter' }))
     const dialog = await screen.findByRole('dialog', { name: 'Filter' })
     expect(dialog).toHaveAttribute('data-side', 'left')
     expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled()
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Supplier A 1' })
+    )
     await user.click(within(dialog).getByRole('button', { name: /premium/ }))
     expect(props.onGroupChange).toHaveBeenCalledWith('premium')
     rerender(

@@ -397,6 +397,11 @@ func UpdateOption(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
+	case "console_setting.pricing_group_layout":
+		if _, err = console_setting.ParsePricingGroupLayout(option.Value.(string)); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	case "console_setting.announcements":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "Announcements")
 		if err != nil {
