@@ -16,11 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Boxes } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useTranslation } from 'react-i18next'
 
-import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarRail,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import { useLayout } from '@/context/layout-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
+import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 
 import { NavGroup } from './nav-group'
@@ -44,7 +52,13 @@ import { SidebarViewHeader } from './sidebar-view-header'
  * in the registry; this component requires no changes.
  */
 export function AppSidebar() {
+  const { t } = useTranslation()
   const { collapsible, variant } = useLayout()
+  const { isMobile } = useSidebar()
+  const links = useTopNavLinks()
+  const pricingLink = links.find(
+    (link) => link.href === '/pricing' && !link.disabled && !link.requiresAuth
+  )
   const { key, view, navGroups } = useSidebarView()
   const shouldReduce = useReducedMotion()
 
@@ -53,6 +67,14 @@ export function AppSidebar() {
       {view && <SidebarViewHeader view={view} />}
 
       <SidebarContent className='py-2'>
+        {isMobile && pricingLink && (
+          <NavGroup
+            title={t('Quick links')}
+            items={[
+              { title: pricingLink.title, url: pricingLink.href, icon: Boxes },
+            ]}
+          />
+        )}
         <AnimatePresence mode='wait' initial={false}>
           <motion.div
             key={key}

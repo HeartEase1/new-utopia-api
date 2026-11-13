@@ -45,9 +45,13 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
   const { t } = useTranslation()
   const [autoCheckEndsAt] = useState(() => Date.now() + 2 * 60 * 1000)
   const [autoCheckStopped, setAutoCheckStopped] = useState(false)
-  const [expired, setExpired] = useState(
-    () => props.order.expires_at * 1000 <= Date.now()
+  const [now, setNow] = useState(() => Date.now())
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((props.order.expires_at * 1000 - now) / 1000)
   )
+  const expired = remainingSeconds === 0
+  const remainingTime = `${String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')}`
   const query = useQuery({
     queryKey: ['alipay-f2f-order', props.order.trade_no],
     queryFn: ({ signal }) => queryAlipayF2FOrder(props.order.trade_no, signal),
@@ -115,12 +119,23 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
   }, [autoCheckEndsAt])
 
   useEffect(() => {
-    const timer = window.setTimeout(
-      () => setExpired(true),
-      Math.max(0, props.order.expires_at * 1000 - Date.now())
-    )
-    return () => window.clearTimeout(timer)
-  }, [props.order.expires_at])
+    if (paid || closed || expired) return
+    // Derive from the absolute deadline: mobile browsers can suspend timers
+    // while Alipay is open. This never sends an additional status request.
+    const updateClock = () => {
+      const currentTime = Date.now()
+      setNow(currentTime)
+      if (currentTime >= autoCheckEndsAt) setAutoCheckStopped(true)
+    }
+    const timer = window.setInterval(updateClock, 1000)
+    document.addEventListener('visibilitychange', updateClock)
+    window.addEventListener('pageshow', updateClock)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', updateClock)
+      window.removeEventListener('pageshow', updateClock)
+    }
+  }, [paid, closed, expired, autoCheckEndsAt])
 
   return (
     <Dialog
@@ -146,6 +161,15 @@ export function AlipayF2FDialog(props: AlipayF2FDialogProps) {
         <div role='status' aria-live='polite'>
           {paid ? t('Payment received') : t('Waiting for payment confirmation')}
         </div>
+        {!paid && !closed && !expired && (
+          <p
+            role='timer'
+            aria-live='off'
+            className='text-primary text-sm font-medium tabular-nums'
+          >
+            {t('Payment expires in {{time}}', { time: remainingTime })}
+          </p>
+        )}
         {cancel.isError && (
           <p role='alert'>
             {t(

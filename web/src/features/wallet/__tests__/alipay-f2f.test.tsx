@@ -202,6 +202,39 @@ it('polls every five seconds for two minutes then only queries when requested', 
   expect(post).toHaveBeenCalledTimes(stoppedAt + 1)
 })
 
+it('counts down from the order deadline without querying on every tick', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-11-13T00:00:00Z'))
+  const post = vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { status: 'pending' } },
+  })
+  showDialog(Date.now() / 1000 + 300)
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(screen.getByRole('timer')).toHaveTextContent('05:00')
+  await act(() => vi.advanceTimersByTimeAsync(1000))
+  expect(screen.getByRole('timer')).toHaveTextContent('04:59')
+  expect(post).toHaveBeenCalledTimes(1)
+
+  // Mobile browsers suspend timers while the user is in Alipay.
+  vi.setSystemTime(new Date('2026-11-13T00:04:58Z'))
+  fireEvent(document, new Event('visibilitychange'))
+  expect(screen.getByRole('timer')).toHaveTextContent('00:02')
+  await act(() => vi.advanceTimersByTimeAsync(2000))
+  expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('img', { name: 'Alipay payment QR code' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'This QR code has expired. If you already paid, check the payment status.'
+    )
+  ).toBeVisible()
+  expect(post).toHaveBeenCalledTimes(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Check payment status' }))
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(post).toHaveBeenCalledTimes(2)
+})
+
 it('keeps the payment dialog open after outside clicks and Escape until Cancel is pressed', async () => {
   vi.spyOn(api, 'post').mockResolvedValue({
     data: { success: true, data: { status: 'pending' } },
@@ -274,6 +307,7 @@ it('shows a retry action after a failed query and refreshes the balance only aft
   retry.focus()
   await user.keyboard('{Enter}')
   expect(await screen.findByText('Payment received')).toBeVisible()
+  expect(screen.queryByRole('timer')).not.toBeInTheDocument()
   await waitFor(() => expect(onPaid).toHaveBeenCalledTimes(1))
   expect(
     screen.queryByRole('button', { name: 'Open Alipay' })
