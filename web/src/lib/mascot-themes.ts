@@ -18,29 +18,35 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import claudeAvatar from '@/assets/mascots/claude/avatar.webp'
 import claudeIdle from '@/assets/mascots/claude/idle.webp'
+import claudePeek from '@/assets/mascots/claude/peek.webp'
 import claudePortrait from '@/assets/mascots/claude/portrait.webp'
 import deepseekAvatar from '@/assets/mascots/deepseek/avatar.webp'
 import deepseekIdle from '@/assets/mascots/deepseek/idle.webp'
+import deepseekPeek from '@/assets/mascots/deepseek/peek.webp'
 import deepseekPortrait from '@/assets/mascots/deepseek/portrait.webp'
 import geminiAvatar from '@/assets/mascots/gemini/avatar.webp'
 import geminiIdle from '@/assets/mascots/gemini/idle.webp'
+import geminiPeek from '@/assets/mascots/gemini/peek.webp'
 import geminiPortrait from '@/assets/mascots/gemini/portrait.webp'
 import glmAvatar from '@/assets/mascots/glm/avatar.webp'
 import glmIdle from '@/assets/mascots/glm/idle.webp'
+import glmPeek from '@/assets/mascots/glm/peek.webp'
 import glmPortrait from '@/assets/mascots/glm/portrait.webp'
 import gptAvatar from '@/assets/mascots/gpt/avatar.webp'
 import gptIdle from '@/assets/mascots/gpt/idle.webp'
+import gptPeek from '@/assets/mascots/gpt/peek.webp'
 import gptPortrait from '@/assets/mascots/gpt/portrait.webp'
 import grokAvatar from '@/assets/mascots/grok/avatar.webp'
 import grokIdle from '@/assets/mascots/grok/idle.webp'
+import grokPeek from '@/assets/mascots/grok/peek.webp'
 import grokPortrait from '@/assets/mascots/grok/portrait.webp'
 
 import type { ThemePreset } from './theme-customization'
 
 /**
  * Artwork and copy for the character themes. A preset listed here gets the
- * overview welcome banner and the sidebar card; every other preset gets
- * neither.
+ * overview welcome banner, the sidebar card and the decorated auth pages;
+ * every other preset gets none of them.
  *
  * The artwork comes from CrossPet under CC BY-NC-SA 4.0, which requires the
  * credit below to stay visible wherever the art is shown. See
@@ -51,6 +57,8 @@ export type MascotTheme = {
   portrait: string
   /** Transparent chibi shown at the banner's right edge. */
   idle: string
+  /** Transparent figure leaning in from the right edge (auth pages). */
+  peek: string
   /** Small avatar for the sidebar card. */
   avatar: string
   /** i18n keys; registered in `i18n/static-keys.ts`. */
@@ -67,6 +75,7 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
   'mascot-claude': {
     portrait: claudePortrait,
     idle: claudeIdle,
+    peek: claudePeek,
     avatar: claudeAvatar,
     eyebrowKey: "Claude's reading room",
     taglineKey:
@@ -77,6 +86,7 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
   'mascot-deepseek': {
     portrait: deepseekPortrait,
     idle: deepseekIdle,
+    peek: deepseekPeek,
     avatar: deepseekAvatar,
     eyebrowKey: "DeepSeek's seaside diner",
     taglineKey: "Work's here! One more bowl of rice after this one!",
@@ -86,6 +96,7 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
   'mascot-gpt': {
     portrait: gptPortrait,
     idle: gptIdle,
+    peek: gptPeek,
     avatar: gptAvatar,
     eyebrowKey: "GPT's castle in the clouds",
     taglineKey: "...You're back. Something this small? Leave it to me.",
@@ -95,6 +106,7 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
   'mascot-gemini': {
     portrait: geminiPortrait,
     idle: geminiIdle,
+    peek: geminiPeek,
     avatar: geminiAvatar,
     eyebrowKey: "Gemini's starlit observatory",
     taglineKey:
@@ -105,6 +117,7 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
   'mascot-grok': {
     portrait: grokPortrait,
     idle: grokIdle,
+    peek: grokPeek,
     avatar: grokAvatar,
     eyebrowKey: "Grok's midnight castle",
     taglineKey: 'Say it straight. Rules? I only care who wins.',
@@ -114,6 +127,7 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
   'mascot-glm': {
     portrait: glmPortrait,
     idle: glmIdle,
+    peek: glmPeek,
     avatar: glmAvatar,
     eyebrowKey: "GLM's bamboo shrine",
     taglineKey: 'Yawn... let me nap through the day. The night is my time.',
