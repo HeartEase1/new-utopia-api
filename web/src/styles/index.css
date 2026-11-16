@@ -33,6 +33,9 @@ For commercial licensing, please contact support@quantumnous.com
 @import './presets/mascot-claude.css';
 @import './presets/mascot-deepseek.css';
 @import './presets/mascot-gpt.css';
+@import './presets/mascot-gemini.css';
+@import './presets/mascot-grok.css';
+@import './presets/mascot-glm.css';
 
 @layer base {
   :root {

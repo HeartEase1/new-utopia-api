@@ -55,6 +55,21 @@ export const THEME_PRESETS = [
     swatches: ['oklch(0.93 0.04 300)', 'oklch(0.6 0.14 295)'],
   },
   {
+    value: 'mascot-gemini',
+    name: 'Gemini',
+    swatches: ['oklch(0.55 0.17 272)', 'oklch(0.7 0.14 335)'],
+  },
+  {
+    value: 'mascot-grok',
+    name: 'Grok',
+    swatches: ['oklch(0.86 0.1 85)', 'oklch(0.53 0.17 18)'],
+  },
+  {
+    value: 'mascot-glm',
+    name: 'GLM',
+    swatches: ['oklch(0.96 0.004 90)', 'oklch(0.27 0.008 260)'],
+  },
+  {
     // Inspired by Anthropic's official brand language: warm cream canvas
     // (#faf9f5) paired with clay/coral (#d97757) as the single accent.
     // Swatches preview the canvas → accent gradient that defines the system.

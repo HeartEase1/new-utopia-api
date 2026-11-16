@@ -22,9 +22,18 @@ import claudePortrait from '@/assets/mascots/claude/portrait.webp'
 import deepseekAvatar from '@/assets/mascots/deepseek/avatar.webp'
 import deepseekIdle from '@/assets/mascots/deepseek/idle.webp'
 import deepseekPortrait from '@/assets/mascots/deepseek/portrait.webp'
+import geminiAvatar from '@/assets/mascots/gemini/avatar.webp'
+import geminiIdle from '@/assets/mascots/gemini/idle.webp'
+import geminiPortrait from '@/assets/mascots/gemini/portrait.webp'
+import glmAvatar from '@/assets/mascots/glm/avatar.webp'
+import glmIdle from '@/assets/mascots/glm/idle.webp'
+import glmPortrait from '@/assets/mascots/glm/portrait.webp'
 import gptAvatar from '@/assets/mascots/gpt/avatar.webp'
 import gptIdle from '@/assets/mascots/gpt/idle.webp'
 import gptPortrait from '@/assets/mascots/gpt/portrait.webp'
+import grokAvatar from '@/assets/mascots/grok/avatar.webp'
+import grokIdle from '@/assets/mascots/grok/idle.webp'
+import grokPortrait from '@/assets/mascots/grok/portrait.webp'
 
 import type { ThemePreset } from './theme-customization'
 
@@ -80,6 +89,33 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
     eyebrowKey: "GPT's castle in the clouds",
     taglineKey: 'Wings out, ready whenever you call.',
     quoteKey: 'Ask boldly. I will take it from here.',
+    credit: 'CrossPet · ZipZipPipe (CC BY-NC-SA 4.0)',
+  },
+  'mascot-gemini': {
+    portrait: geminiPortrait,
+    idle: geminiIdle,
+    avatar: geminiAvatar,
+    eyebrowKey: "Gemini's starlit observatory",
+    taglineKey: 'Text, images, or stars. Show me anything.',
+    quoteKey: 'Curiosity is my favorite constellation.',
+    credit: 'CrossPet (CC BY-NC-SA 4.0)',
+  },
+  'mascot-grok': {
+    portrait: grokPortrait,
+    idle: grokIdle,
+    avatar: grokAvatar,
+    eyebrowKey: "Grok's midnight castle",
+    taglineKey: 'Bring your boldest claim. I will check it twice.',
+    quoteKey: 'Facts first. Then we argue.',
+    credit: 'CrossPet · ZipZipPipe (CC BY-NC-SA 4.0)',
+  },
+  'mascot-glm': {
+    portrait: glmPortrait,
+    idle: glmIdle,
+    avatar: glmAvatar,
+    eyebrowKey: "GLM's bamboo shrine",
+    taglineKey: 'Quiet paths, quick answers.',
+    quoteKey: 'A clever fox keeps things simple.',
     credit: 'CrossPet · ZipZipPipe (CC BY-NC-SA 4.0)',
   },
 }

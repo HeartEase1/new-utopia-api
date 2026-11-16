@@ -51,6 +51,9 @@ describe('mascot welcome banner', () => {
     ['mascot-claude', "Claude's reading room"],
     ['mascot-deepseek', "DeepSeek's seaside diner"],
     ['mascot-gpt', "GPT's castle in the clouds"],
+    ['mascot-gemini', "Gemini's starlit observatory"],
+    ['mascot-grok', "Grok's midnight castle"],
+    ['mascot-glm', "GLM's bamboo shrine"],
   ])('greets the signed-in user under the %s preset', (preset, regionName) => {
     renderBanner(preset)
 
