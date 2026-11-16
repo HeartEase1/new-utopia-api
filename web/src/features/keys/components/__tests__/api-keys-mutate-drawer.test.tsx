@@ -121,6 +121,23 @@ async function renderCreateDrawer(): Promise<void> {
     },
     { updatedAt: freshAt }
   )
+  queryClient.setQueryData(
+    ['pricing'],
+    {
+      success: true,
+      data: [],
+      vendors: [],
+      group_layout: [
+        {
+          id: 'drawer:priority',
+          title: 'Priority',
+          groups: ['vip', 'default'],
+          default_open: false,
+        },
+      ],
+    },
+    { updatedAt: freshAt }
+  )
   renderedDrawer = { queryClient }
 
   render(
@@ -206,6 +223,18 @@ afterEach(() => {
 })
 
 describe('API keys mutate drawer Auto group integration', () => {
+  test('lists the API key groups in the pricing drawer order', async () => {
+    await renderCreateDrawer()
+
+    fireEvent.click(getControlByLabel('Group'))
+
+    expect(
+      [
+        ...document.querySelectorAll<HTMLElement>('[data-slot="command-item"]'),
+      ].map((item) => item.getAttribute('data-value'))
+    ).toEqual(['auto', 'vip', 'default'])
+  })
+
   test('inherits the root Auto order and sends an empty override for every batch-created key', async () => {
     const createdPayloads: Array<Record<string, unknown>> = []
     installApiFixtures(createdPayloads)

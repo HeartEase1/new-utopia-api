@@ -320,6 +320,17 @@ describe('site default preset', () => {
     expect(localStorage.getItem('newapi:theme:v1:preset')).toBeNull()
   })
 
+  it.each(['mascot-claude', 'mascot-deepseek', 'mascot-gpt'])(
+    'applies the %s character theme as the site default',
+    (preset) => {
+      setSiteDefaultPreset(preset)
+
+      render(<ThemeFixture />)
+
+      expect(document.body).toHaveAttribute('data-theme-preset', preset)
+    }
+  )
+
   it('falls back to the built-in default for a preset this build does not ship', () => {
     setSiteDefaultPreset('not-shipped-yet')
 

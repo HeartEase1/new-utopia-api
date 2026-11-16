@@ -917,4 +917,17 @@ export const STATIC_I18N_KEYS = [
   'Channel priorities changed. Refresh and try again.',
   'Invalid channel priority move',
   'Channel priority is outside the sortable range',
+  // Character theme names and copy (lib/mascot-themes.ts).
+  'preset.mascot-claude',
+  'preset.mascot-deepseek',
+  'preset.mascot-gpt',
+  "Claude's reading room",
+  'Take your time. Every request gets a careful read.',
+  'A good answer starts with reading the question.',
+  "DeepSeek's seaside diner",
+  'Fresh tokens daily. Pay only for what you finish.',
+  'Deep thoughts, served warm.',
+  "GPT's castle in the clouds",
+  'Wings out, ready whenever you call.',
+  'Ask boldly. I will take it from here.',
 ] as const

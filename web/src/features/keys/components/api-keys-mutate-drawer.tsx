@@ -62,6 +62,8 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { getPricing } from '@/features/pricing/api'
+import { orderGroupsByPricingLayout } from '@/features/pricing/lib/group-layout'
 import { RelatedPolicyLink } from '@/features/system-settings/request-policies/related-policy-link'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
@@ -138,6 +140,13 @@ export function ApiKeysMutateDrawer({
     staleTime: 0,
   })
 
+  const { data: pricingData } = useQuery({
+    queryKey: ['pricing'],
+    queryFn: async () => requireServerSuccess(await getPricing()),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  })
+
   const {
     data: apiKeyData,
     isFetched: apiKeyFetched,
@@ -172,6 +181,22 @@ export function ApiKeysMutateDrawer({
       })),
     [groupsData, t]
   )
+  const orderedGroups = useMemo(() => {
+    const autoGroup = groups.filter((group) => group.value === 'auto')
+    const regularGroups = groups.filter((group) => group.value !== 'auto')
+    const orderedValues = orderGroupsByPricingLayout(
+      regularGroups.map((group) => group.value),
+      pricingData?.group_layout ?? []
+    )
+    const groupsByValue = new Map(groups.map((group) => [group.value, group]))
+    return [
+      ...autoGroup,
+      ...orderedValues.flatMap((value) => {
+        const group = groupsByValue.get(value)
+        return group ? [group] : []
+      }),
+    ]
+  }, [groups, pricingData?.group_layout])
   const backendHasAuto = groups.some((g) => g.value === 'auto')
   const availableAutoGroupNames = useMemo(
     () => groups.filter((group) => group.value !== 'auto').map((g) => g.value),
@@ -422,7 +447,7 @@ export function ApiKeysMutateDrawer({
                     <FormLabel>{t('Group')}</FormLabel>
                     <FormControl>
                       <ApiKeyGroupCombobox
-                        options={groups}
+                        options={orderedGroups}
                         value={field.value}
                         onValueChange={(group) => {
                           field.onChange(group)

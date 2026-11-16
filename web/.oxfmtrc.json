@@ -22,6 +22,7 @@
     ".tanstack",
     ".eslintrc.cjs",
     "**/routeTree.gen.ts",
-    "src/routeTree.gen.ts"
+    "src/routeTree.gen.ts",
+    "src/assets/mascots/LICENSE.md"
   ]
 }

@@ -427,12 +427,13 @@ For commercial licensing, please contact support@quantumnous.com
  *     derivation (the Anthropic system deliberately uses warm neutrals for
  *     cards/borders rather than tinting them with the clay accent).
  *   - `simple-large`: keeps intentionally neutral, high-contrast surfaces.
- *   - `new-utopia`: bespoke cream surfaces, see `presets/new-utopia.css`. */
+ *   - `new-utopia`: bespoke cream surfaces, see `presets/new-utopia.css`.
+ *   - `mascot-*`: character themes, see `presets/mascot-*.css`. */
 [data-theme-preset]:not([data-theme-preset='default']):not(
     [data-theme-preset='anthropic']
   ):not([data-theme-preset='simple-large']):not(
     [data-theme-preset='new-utopia']
-  ) {
+  ):not([data-theme-preset^='mascot-']) {
   --card: color-mix(in oklch, var(--primary) 3%, var(--background));
   --popover: color-mix(in oklch, var(--primary) 5%, var(--background));
   --muted: color-mix(in oklch, var(--primary) 7%, var(--background));
@@ -459,7 +460,7 @@ For commercial licensing, please contact support@quantumnous.com
     [data-theme-preset='anthropic']
   ):not([data-theme-preset='simple-large']):not(
     [data-theme-preset='new-utopia']
-  ) {
+  ):not([data-theme-preset^='mascot-']) {
   --card: color-mix(in oklch, var(--primary) 8%, var(--background));
   --popover: color-mix(in oklch, var(--primary) 12%, var(--background));
   --muted: color-mix(in oklch, var(--primary) 12%, var(--background));

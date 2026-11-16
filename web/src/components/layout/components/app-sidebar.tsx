@@ -31,6 +31,7 @@ import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 
+import { MascotSidebarCard } from './mascot-sidebar-card'
 import { NavGroup } from './nav-group'
 import { SidebarViewHeader } from './sidebar-view-header'
 
@@ -92,6 +93,8 @@ export function AppSidebar() {
           </motion.div>
         </AnimatePresence>
       </SidebarContent>
+
+      <MascotSidebarCard />
 
       <SidebarRail />
     </Sidebar>

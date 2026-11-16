@@ -38,6 +38,23 @@ export const THEME_PRESETS = [
     swatches: ['oklch(0.72 0.07 150)', 'oklch(0.88 0.07 55)'],
   },
   {
+    // Character themes: palette in `styles/presets/mascot-*.css`, artwork and
+    // copy in `lib/mascot-themes.ts`.
+    value: 'mascot-claude',
+    name: 'Claude',
+    swatches: ['oklch(0.93 0.05 70)', 'oklch(0.62 0.16 42)'],
+  },
+  {
+    value: 'mascot-deepseek',
+    name: 'DeepSeek',
+    swatches: ['oklch(0.9 0.05 240)', 'oklch(0.5 0.17 262)'],
+  },
+  {
+    value: 'mascot-gpt',
+    name: 'GPT',
+    swatches: ['oklch(0.93 0.04 300)', 'oklch(0.6 0.14 295)'],
+  },
+  {
     // Inspired by Anthropic's official brand language: warm cream canvas
     // (#faf9f5) paired with clay/coral (#d97757) as the single accent.
     // Swatches preview the canvas → accent gradient that defines the system.

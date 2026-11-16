@@ -79,6 +79,22 @@ export function completePricingGroupLayout(
   return result
 }
 
+export function orderGroupsByPricingLayout(
+  groups: string[],
+  layout: PricingGroupLayoutItem[]
+): string[] {
+  const ordered: string[] = []
+  const remaining = new Set(groups)
+  for (const item of completePricingGroupLayout(layout, groups)) {
+    for (const group of item.groups) {
+      if (!remaining.has(group)) continue
+      ordered.push(group)
+      remaining.delete(group)
+    }
+  }
+  return [...ordered, ...remaining]
+}
+
 export function movePricingGroup(
   layout: PricingGroupLayoutItem[],
   group: string,

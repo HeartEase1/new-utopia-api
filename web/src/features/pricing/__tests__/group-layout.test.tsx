@@ -27,6 +27,7 @@ import GroupLayoutEditor from '../components/group-layout-editor'
 import {
   completePricingGroupLayout,
   movePricingGroup,
+  orderGroupsByPricingLayout,
   PRICING_GROUP_LAYOUT_KEY,
   type PricingGroupLayoutItem,
 } from '../lib/group-layout'
@@ -91,6 +92,12 @@ it('retains saved positions, filters hidden groups, and appends new groups in st
   const moved = movePricingGroup(saved, 'default', 'drawer:a')
   expect(moved[0].groups).toEqual(['premium', 'free', 'default'])
   expect(saved[0].groups).toEqual(['premium', 'free'])
+})
+
+it('orders API key groups by drawer position and member order', () => {
+  expect(
+    orderGroupsByPricingLayout(['new', 'default', 'premium', 'free'], saved)
+  ).toEqual(['premium', 'free', 'default', 'new'])
 })
 
 it('saves drawer positions, member order, and group moves in one setting', async () => {
