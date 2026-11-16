@@ -17,83 +17,93 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 /* ── DeepSeek character theme ───────────────────────────────────────────
- * Sea-foam white canvas with deep ocean blue as the accent, after the
- * whale maid. Hue 240 = foam, 262 = ocean blue.
+ * Seaside terrace: the brightest, airiest canvas of the set, a sky wash
+ * across the top, and the navy of her maid dress as the accent. Corners
+ * are rounder, like sea-worn pebbles. Dark mode dives: the canvas keeps
+ * real blue in it rather than going grey.
+ *
+ * Hue 235 = sea foam, 264 = navy, 215/195 = shallow water.
  *
  * Defines its own surfaces, so it is opted out of the semantic surface
- * bridge in theme-presets.css. The overview balance panel and sparklines
- * pick up --chart-1..3 through --overview-accent-*. Artwork and copy for
- * the banner and sidebar card live in `lib/mascot-themes.ts`.
+ * bridge in theme-presets.css. The banner, balance panel and sparklines
+ * pick up --chart-1..3. Artwork and copy live in `lib/mascot-themes.ts`;
+ * rules common to every character theme live in `mascot-shared.css`.
  */
 [data-theme-preset='mascot-deepseek'] {
-  --background: oklch(0.975 0.014 240);
-  --foreground: oklch(0.29 0.03 262);
+  --background: oklch(0.982 0.01 235);
+  --foreground: oklch(0.25 0.045 265);
+  --card: oklch(0.996 0.004 235);
+  --card-foreground: oklch(0.25 0.045 265);
+  --popover: oklch(0.998 0.003 235);
+  --popover-foreground: oklch(0.25 0.045 265);
 
-  --card: oklch(0.992 0.007 240);
-  --card-foreground: oklch(0.29 0.03 262);
-  --popover: oklch(0.995 0.006 240);
-  --popover-foreground: oklch(0.29 0.03 262);
+  --primary: oklch(0.46 0.16 264);
+  --primary-foreground: oklch(0.99 0.006 235);
+  --secondary: oklch(0.93 0.035 235);
+  --secondary-foreground: oklch(0.33 0.08 262);
 
-  --primary: oklch(0.53 0.17 262);
-  --primary-foreground: oklch(0.99 0.008 240);
-  --secondary: oklch(0.93 0.035 262);
-  --secondary-foreground: oklch(0.36 0.06 262);
-
-  --muted: oklch(0.95 0.016 240);
-  --muted-foreground: oklch(0.49 0.03 262);
-  --accent: oklch(0.93 0.04 262);
-  --accent-foreground: oklch(0.33 0.07 262);
+  --muted: oklch(0.955 0.016 235);
+  --muted-foreground: oklch(0.48 0.04 258);
+  --accent: oklch(0.925 0.045 240);
+  --accent-foreground: oklch(0.32 0.1 262);
 
   --destructive: oklch(0.55 0.19 25);
   --destructive-foreground: oklch(0.99 0 0);
   --success: oklch(0.52 0.11 155);
   --success-foreground: oklch(0.99 0 0);
   --warning: oklch(0.8 0.12 80);
-  --warning-foreground: oklch(0.29 0.03 262);
+  --warning-foreground: oklch(0.25 0.045 265);
   --info: oklch(0.53 0.11 245);
   --info-foreground: oklch(0.99 0 0);
-  --neutral: oklch(0.49 0.03 262);
-  --neutral-foreground: oklch(0.29 0.03 262);
+  --neutral: oklch(0.48 0.04 258);
+  --neutral-foreground: oklch(0.25 0.045 265);
 
-  --border: oklch(0.9 0.022 240);
-  --input: oklch(0.88 0.025 240);
-  --ring: oklch(0.53 0.17 262);
+  --border: oklch(0.9 0.025 238);
+  --input: oklch(0.88 0.03 238);
+  --ring: oklch(0.46 0.16 264);
 
-  --chart-1: oklch(0.6 0.16 262);
-  --chart-2: oklch(0.68 0.11 215);
-  --chart-3: oklch(0.68 0.09 190);
-  --chart-4: oklch(0.68 0.11 290);
-  --chart-5: oklch(0.68 0.08 235);
+  --chart-1: oklch(0.55 0.16 262); /* navy */
+  --chart-2: oklch(0.72 0.11 215); /* shallow water */
+  --chart-3: oklch(0.78 0.09 195); /* lagoon */
+  --chart-4: oklch(0.62 0.12 285); /* dusk */
+  --chart-5: oklch(0.8 0.1 85); /* sand */
 
-  --sidebar: oklch(0.96 0.02 240);
-  --sidebar-foreground: oklch(0.29 0.03 262);
-  --sidebar-primary: oklch(0.53 0.17 262);
-  --sidebar-primary-foreground: oklch(0.99 0.008 240);
-  --sidebar-accent: oklch(0.92 0.045 262);
-  --sidebar-accent-foreground: oklch(0.33 0.07 262);
-  --sidebar-border: oklch(0.9 0.022 240);
-  --sidebar-ring: oklch(0.53 0.17 262);
+  --sidebar: oklch(0.965 0.02 236);
+  --sidebar-foreground: oklch(0.25 0.045 265);
+  --sidebar-primary: oklch(0.46 0.16 264);
+  --sidebar-primary-foreground: oklch(0.99 0.006 235);
+  --sidebar-accent: oklch(0.915 0.05 240);
+  --sidebar-accent-foreground: oklch(0.32 0.1 262);
+  --sidebar-border: oklch(0.9 0.025 238);
+  --sidebar-ring: oklch(0.46 0.16 264);
 
-  --skeleton-base: oklch(0.935 0.016 240);
-  --skeleton-highlight: oklch(0.97 0.01 240);
+  --skeleton-base: oklch(0.94 0.016 235);
+  --skeleton-highlight: oklch(0.975 0.01 235);
+
+  /* Painted behind the page by mascot-shared.css. */
+  --mascot-ambience: linear-gradient(
+    180deg,
+    oklch(0.9 0.06 230 / 55%),
+    transparent 22rem
+  );
 }
 .dark [data-theme-preset='mascot-deepseek'] {
-  --background: oklch(0.23 0.018 262);
-  --foreground: oklch(0.93 0.015 240);
-  --card: oklch(0.27 0.02 262);
-  --card-foreground: oklch(0.93 0.015 240);
-  --popover: oklch(0.29 0.02 262);
-  --popover-foreground: oklch(0.93 0.015 240);
+  --background: oklch(0.2 0.035 262);
+  --foreground: oklch(0.94 0.015 235);
+  --card: oklch(0.24 0.04 262);
+  --card-foreground: oklch(0.94 0.015 235);
+  --popover: oklch(0.26 0.04 262);
+  --popover-foreground: oklch(0.94 0.015 235);
 
-  --primary: oklch(0.76 0.12 262);
-  --primary-foreground: oklch(0.2 0.03 262);
-  --secondary: oklch(0.33 0.035 262);
-  --secondary-foreground: oklch(0.92 0.015 240);
+  --primary: oklch(0.75 0.12 245);
+  --primary-foreground: oklch(0.19 0.04 262);
+  --secondary: oklch(0.31 0.05 262);
+  --secondary-foreground: oklch(0.93 0.015 235);
 
-  --muted: oklch(0.3 0.018 262);
-  --muted-foreground: oklch(0.74 0.025 240);
-  --accent: oklch(0.35 0.05 262);
-  --accent-foreground: oklch(0.95 0.015 240);
+  --muted: oklch(0.275 0.035 262);
+  --muted-foreground: oklch(0.75 0.035 240);
+  --accent: oklch(0.34 0.07 258);
+  --accent-foreground: oklch(0.96 0.015 235);
 
   --destructive: oklch(0.7 0.16 25);
   --destructive-foreground: oklch(0.2 0.02 25);
@@ -103,36 +113,43 @@ For commercial licensing, please contact support@quantumnous.com
   --warning-foreground: oklch(0.2 0.02 80);
   --info: oklch(0.74 0.09 245);
   --info-foreground: oklch(0.2 0.02 245);
-  --neutral: oklch(0.74 0.025 240);
-  --neutral-foreground: oklch(0.2 0.03 262);
+  --neutral: oklch(0.75 0.035 240);
+  --neutral-foreground: oklch(0.19 0.04 262);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.76 0.12 262);
+  --ring: oklch(0.75 0.12 245);
 
-  --chart-1: oklch(0.76 0.12 262);
-  --chart-2: oklch(0.78 0.11 215);
-  --chart-3: oklch(0.78 0.09 190);
-  --chart-4: oklch(0.78 0.11 290);
-  --chart-5: oklch(0.78 0.08 235);
+  --chart-1: oklch(0.75 0.12 245);
+  --chart-2: oklch(0.8 0.09 205);
+  --chart-3: oklch(0.84 0.07 190);
+  --chart-4: oklch(0.74 0.1 290);
+  --chart-5: oklch(0.84 0.08 85);
 
-  --sidebar: oklch(0.21 0.018 262);
-  --sidebar-foreground: oklch(0.92 0.015 240);
-  --sidebar-primary: oklch(0.76 0.12 262);
-  --sidebar-primary-foreground: oklch(0.2 0.03 262);
-  --sidebar-accent: oklch(0.33 0.05 262);
-  --sidebar-accent-foreground: oklch(0.95 0.015 240);
+  --sidebar: oklch(0.18 0.035 262);
+  --sidebar-foreground: oklch(0.94 0.015 235);
+  --sidebar-primary: oklch(0.75 0.12 245);
+  --sidebar-primary-foreground: oklch(0.19 0.04 262);
+  --sidebar-accent: oklch(0.32 0.07 258);
+  --sidebar-accent-foreground: oklch(0.96 0.015 235);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.76 0.12 262);
+  --sidebar-ring: oklch(0.75 0.12 245);
 
-  --skeleton-base: oklch(0.3 0.018 262);
-  --skeleton-highlight: oklch(0.38 0.018 262);
+  --skeleton-base: oklch(0.275 0.035 262);
+  --skeleton-highlight: oklch(0.35 0.035 262);
+
+  /* Painted behind the page by mascot-shared.css. */
+  --mascot-ambience: linear-gradient(
+    180deg,
+    oklch(0.45 0.1 250 / 30%),
+    transparent 22rem
+  );
 }
 
-/* Loads after the radius axis in theme-presets.css, so only apply the
- * rounder default while the user has no radius choice. */
+/* Loads after the radius axis in theme-presets.css, so only apply this
+ * default while the user has no radius choice. */
 [data-theme-preset='mascot-deepseek']:not([data-theme-radius]) {
-  --radius: 1.125rem;
+  --radius: 1.25rem;
 }
 
 [data-theme-preset='mascot-deepseek'] ::selection {

@@ -89,7 +89,7 @@ it('shows the character card with its art credit in the mobile drawer', async ()
 
   const drawer = screen.getByRole('dialog')
   expect(
-    within(drawer).getByText('A good answer starts with reading the question.')
+    within(drawer).getByText("I'll tell you the truth, and I'll say it kindly.")
   ).toBeVisible()
   expect(
     within(drawer).getByRole('link', { name: /CrossPet/ })
@@ -99,7 +99,9 @@ it('shows the character card with its art credit in the mobile drawer', async ()
 it('shows the character card in the desktop sidebar', async () => {
   await renderSidebar('mascot-deepseek', 1280)
 
-  expect(await screen.findByText('Deep thoughts, served warm.')).toBeVisible()
+  expect(
+    await screen.findByText('Thinking deeply... not slacking off, promise!')
+  ).toBeVisible()
 })
 
 it('adds no card under a preset without a character', async () => {

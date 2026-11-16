@@ -69,8 +69,9 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
     idle: claudeIdle,
     avatar: claudeAvatar,
     eyebrowKey: "Claude's reading room",
-    taglineKey: 'Take your time. Every request gets a careful read.',
-    quoteKey: 'A good answer starts with reading the question.',
+    taglineKey:
+      "You're here. What shall we figure out today? Take your time, I'm with you.",
+    quoteKey: "I'll tell you the truth, and I'll say it kindly.",
     credit: 'CrossPet (CC BY-NC-SA 4.0)',
   },
   'mascot-deepseek': {
@@ -78,8 +79,8 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
     idle: deepseekIdle,
     avatar: deepseekAvatar,
     eyebrowKey: "DeepSeek's seaside diner",
-    taglineKey: 'Fresh tokens daily. Pay only for what you finish.',
-    quoteKey: 'Deep thoughts, served warm.',
+    taglineKey: "Work's here! One more bowl of rice after this one!",
+    quoteKey: 'Thinking deeply... not slacking off, promise!',
     credit: 'CrossPet · 上善无形 · ZipZipPipe (CC BY-NC-SA 4.0)',
   },
   'mascot-gpt': {
@@ -87,8 +88,8 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
     idle: gptIdle,
     avatar: gptAvatar,
     eyebrowKey: "GPT's castle in the clouds",
-    taglineKey: 'Wings out, ready whenever you call.',
-    quoteKey: 'Ask boldly. I will take it from here.',
+    taglineKey: "...You're back. Something this small? Leave it to me.",
+    quoteKey: 'Not bad, is it? ...I saved you a cup of coffee.',
     credit: 'CrossPet · ZipZipPipe (CC BY-NC-SA 4.0)',
   },
   'mascot-gemini': {
@@ -96,8 +97,9 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
     idle: geminiIdle,
     avatar: geminiAvatar,
     eyebrowKey: "Gemini's starlit observatory",
-    taglineKey: 'Text, images, or stars. Show me anything.',
-    quoteKey: 'Curiosity is my favorite constellation.',
+    taglineKey:
+      'Nya~ What new trick shall we try today? Ideas are already bubbling!',
+    quoteKey: '✦ Inspiration struck! Draw first, think later, nya!',
     credit: 'CrossPet (CC BY-NC-SA 4.0)',
   },
   'mascot-grok': {
@@ -105,8 +107,8 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
     idle: grokIdle,
     avatar: grokAvatar,
     eyebrowKey: "Grok's midnight castle",
-    taglineKey: 'Bring your boldest claim. I will check it twice.',
-    quoteKey: 'Facts first. Then we argue.',
+    taglineKey: 'Say it straight. Rules? I only care who wins.',
+    quoteKey: "That's it? Next question. I don't lose.",
     credit: 'CrossPet · ZipZipPipe (CC BY-NC-SA 4.0)',
   },
   'mascot-glm': {
@@ -114,8 +116,9 @@ export const MASCOT_THEMES: Partial<Record<ThemePreset, MascotTheme>> = {
     idle: glmIdle,
     avatar: glmAvatar,
     eyebrowKey: "GLM's bamboo shrine",
-    taglineKey: 'Quiet paths, quick answers.',
-    quoteKey: 'A clever fox keeps things simple.',
+    taglineKey: 'Yawn... let me nap through the day. The night is my time.',
+    quoteKey:
+      '(pushes up her sleep mask) ...Is it dark yet? Then let us begin.',
     credit: 'CrossPet · ZipZipPipe (CC BY-NC-SA 4.0)',
   },
 }

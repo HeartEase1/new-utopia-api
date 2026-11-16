@@ -30,6 +30,7 @@ For commercial licensing, please contact support@quantumnous.com
 @import './theme.css';
 @import './theme-presets.css';
 @import './presets/new-utopia.css';
+@import './presets/mascot-shared.css';
 @import './presets/mascot-claude.css';
 @import './presets/mascot-deepseek.css';
 @import './presets/mascot-gpt.css';

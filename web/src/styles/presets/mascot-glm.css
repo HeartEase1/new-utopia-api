@@ -19,8 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 /* ── GLM character theme ──────────────────────────────────────────────────
  * Ink on rice paper, after the black fox maid: a warm off-white canvas,
  * ink black as the accent, and greys for everything in between. Colour is
- * kept to the charts only (fox-fire blue and torii vermilion), so data
- * stays readable while the chrome stays monochrome.
+ * kept to the third and fourth chart series (fox-fire blue and torii
+ * vermilion); the first two, which also tint the banner and balance panel,
+ * are ink, so the chrome stays monochrome while data stays readable.
  *
  * Hue 90 = rice paper, 260 = cool ink. Dark mode inverts it: paper-white
  * accent on an ink-black canvas.
@@ -65,8 +66,8 @@ For commercial licensing, please contact support@quantumnous.com
   --ring: oklch(0.45 0.008 260);
 
   --chart-1: oklch(0.35 0.01 260); /* ink */
-  --chart-2: oklch(0.62 0.1 240); /* fox-fire blue */
-  --chart-3: oklch(0.6 0.008 260); /* diluted ink */
+  --chart-2: oklch(0.6 0.008 260); /* diluted ink */
+  --chart-3: oklch(0.62 0.1 240); /* fox-fire blue */
   --chart-4: oklch(0.6 0.15 30); /* torii vermilion */
   --chart-5: oklch(0.76 0.006 260); /* pale wash */
 
@@ -116,8 +117,8 @@ For commercial licensing, please contact support@quantumnous.com
   --ring: oklch(0.7 0.006 90);
 
   --chart-1: oklch(0.86 0.005 90);
-  --chart-2: oklch(0.74 0.09 240);
-  --chart-3: oklch(0.62 0.006 260);
+  --chart-2: oklch(0.62 0.006 260);
+  --chart-3: oklch(0.74 0.09 240);
   --chart-4: oklch(0.72 0.13 30);
   --chart-5: oklch(0.45 0.006 260);
 

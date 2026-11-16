@@ -17,83 +17,94 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 /* ── GPT character theme ───────────────────────────────────────────
- * Cloud-lilac canvas with soft violet as the accent, after the white
- * dragon. Hue 300 = lilac mist, 295 = violet.
+ * Pearl and silver, after the white dragon: the most restrained of the
+ * set. The canvas is nearly neutral, the accent a muted violet-slate
+ * rather than a saturated purple, and one pale gold in the charts stands
+ * in for dawn light. Dark mode is moonlit slate with a silver-lavender
+ * accent.
+ *
+ * Hue 290 = pearl, 285 = violet-slate, 250 = slate blue.
  *
  * Defines its own surfaces, so it is opted out of the semantic surface
- * bridge in theme-presets.css. The overview balance panel and sparklines
- * pick up --chart-1..3 through --overview-accent-*. Artwork and copy for
- * the banner and sidebar card live in `lib/mascot-themes.ts`.
+ * bridge in theme-presets.css. The banner, balance panel and sparklines
+ * pick up --chart-1..3. Artwork and copy live in `lib/mascot-themes.ts`;
+ * rules common to every character theme live in `mascot-shared.css`.
  */
 [data-theme-preset='mascot-gpt'] {
-  --background: oklch(0.975 0.014 300);
-  --foreground: oklch(0.29 0.03 295);
+  --background: oklch(0.978 0.006 290);
+  --foreground: oklch(0.27 0.025 285);
+  --card: oklch(0.995 0.003 290);
+  --card-foreground: oklch(0.27 0.025 285);
+  --popover: oklch(0.997 0.003 290);
+  --popover-foreground: oklch(0.27 0.025 285);
 
-  --card: oklch(0.992 0.007 300);
-  --card-foreground: oklch(0.29 0.03 295);
-  --popover: oklch(0.995 0.006 300);
-  --popover-foreground: oklch(0.29 0.03 295);
+  --primary: oklch(0.5 0.09 285);
+  --primary-foreground: oklch(0.99 0.004 290);
+  --secondary: oklch(0.935 0.014 290);
+  --secondary-foreground: oklch(0.35 0.04 285);
 
-  --primary: oklch(0.53 0.15 295);
-  --primary-foreground: oklch(0.99 0.008 300);
-  --secondary: oklch(0.93 0.035 295);
-  --secondary-foreground: oklch(0.36 0.06 295);
-
-  --muted: oklch(0.95 0.016 300);
-  --muted-foreground: oklch(0.49 0.03 295);
-  --accent: oklch(0.93 0.04 295);
-  --accent-foreground: oklch(0.33 0.07 295);
+  --muted: oklch(0.955 0.008 290);
+  --muted-foreground: oklch(0.49 0.025 285);
+  --accent: oklch(0.93 0.022 295);
+  --accent-foreground: oklch(0.34 0.06 288);
 
   --destructive: oklch(0.55 0.19 25);
   --destructive-foreground: oklch(0.99 0 0);
   --success: oklch(0.52 0.11 155);
   --success-foreground: oklch(0.99 0 0);
   --warning: oklch(0.8 0.12 80);
-  --warning-foreground: oklch(0.29 0.03 295);
+  --warning-foreground: oklch(0.27 0.025 285);
   --info: oklch(0.53 0.11 245);
   --info-foreground: oklch(0.99 0 0);
-  --neutral: oklch(0.49 0.03 295);
-  --neutral-foreground: oklch(0.29 0.03 295);
+  --neutral: oklch(0.49 0.025 285);
+  --neutral-foreground: oklch(0.27 0.025 285);
 
-  --border: oklch(0.9 0.022 300);
-  --input: oklch(0.88 0.025 300);
-  --ring: oklch(0.53 0.15 295);
+  --border: oklch(0.905 0.012 290);
+  --input: oklch(0.885 0.014 290);
+  --ring: oklch(0.5 0.09 285);
 
-  --chart-1: oklch(0.6 0.14 295);
-  --chart-2: oklch(0.68 0.1 330);
-  --chart-3: oklch(0.68 0.09 250);
-  --chart-4: oklch(0.68 0.1 85);
-  --chart-5: oklch(0.68 0.07 200);
+  --chart-1: oklch(0.56 0.1 285); /* violet-slate */
+  --chart-2: oklch(0.72 0.07 250); /* slate blue */
+  --chart-3: oklch(0.78 0.06 310); /* orchid mist */
+  --chart-4: oklch(0.8 0.08 85); /* pale gold */
+  --chart-5: oklch(0.66 0.02 285); /* silver */
 
-  --sidebar: oklch(0.96 0.02 300);
-  --sidebar-foreground: oklch(0.29 0.03 295);
-  --sidebar-primary: oklch(0.53 0.15 295);
-  --sidebar-primary-foreground: oklch(0.99 0.008 300);
-  --sidebar-accent: oklch(0.92 0.045 295);
-  --sidebar-accent-foreground: oklch(0.33 0.07 295);
-  --sidebar-border: oklch(0.9 0.022 300);
-  --sidebar-ring: oklch(0.53 0.15 295);
+  --sidebar: oklch(0.962 0.01 290);
+  --sidebar-foreground: oklch(0.27 0.025 285);
+  --sidebar-primary: oklch(0.5 0.09 285);
+  --sidebar-primary-foreground: oklch(0.99 0.004 290);
+  --sidebar-accent: oklch(0.92 0.024 295);
+  --sidebar-accent-foreground: oklch(0.34 0.06 288);
+  --sidebar-border: oklch(0.905 0.012 290);
+  --sidebar-ring: oklch(0.5 0.09 285);
 
-  --skeleton-base: oklch(0.935 0.016 300);
-  --skeleton-highlight: oklch(0.97 0.01 300);
+  --skeleton-base: oklch(0.94 0.008 290);
+  --skeleton-highlight: oklch(0.975 0.005 290);
+
+  /* Painted behind the page by mascot-shared.css. */
+  --mascot-ambience: radial-gradient(
+    56rem 24rem at 50% -12%,
+    oklch(0.9 0.04 300 / 60%),
+    transparent 70%
+  );
 }
 .dark [data-theme-preset='mascot-gpt'] {
-  --background: oklch(0.23 0.018 295);
-  --foreground: oklch(0.93 0.015 300);
-  --card: oklch(0.27 0.02 295);
-  --card-foreground: oklch(0.93 0.015 300);
-  --popover: oklch(0.29 0.02 295);
-  --popover-foreground: oklch(0.93 0.015 300);
+  --background: oklch(0.215 0.015 285);
+  --foreground: oklch(0.94 0.008 290);
+  --card: oklch(0.255 0.018 285);
+  --card-foreground: oklch(0.94 0.008 290);
+  --popover: oklch(0.275 0.018 285);
+  --popover-foreground: oklch(0.94 0.008 290);
 
-  --primary: oklch(0.76 0.12 295);
-  --primary-foreground: oklch(0.2 0.03 295);
-  --secondary: oklch(0.33 0.035 295);
-  --secondary-foreground: oklch(0.92 0.015 300);
+  --primary: oklch(0.82 0.06 290);
+  --primary-foreground: oklch(0.21 0.025 285);
+  --secondary: oklch(0.32 0.022 285);
+  --secondary-foreground: oklch(0.93 0.008 290);
 
-  --muted: oklch(0.3 0.018 295);
-  --muted-foreground: oklch(0.74 0.025 300);
-  --accent: oklch(0.35 0.05 295);
-  --accent-foreground: oklch(0.95 0.015 300);
+  --muted: oklch(0.285 0.016 285);
+  --muted-foreground: oklch(0.75 0.02 290);
+  --accent: oklch(0.34 0.035 290);
+  --accent-foreground: oklch(0.96 0.008 290);
 
   --destructive: oklch(0.7 0.16 25);
   --destructive-foreground: oklch(0.2 0.02 25);
@@ -103,36 +114,43 @@ For commercial licensing, please contact support@quantumnous.com
   --warning-foreground: oklch(0.2 0.02 80);
   --info: oklch(0.74 0.09 245);
   --info-foreground: oklch(0.2 0.02 245);
-  --neutral: oklch(0.74 0.025 300);
-  --neutral-foreground: oklch(0.2 0.03 295);
+  --neutral: oklch(0.75 0.02 290);
+  --neutral-foreground: oklch(0.21 0.025 285);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.76 0.12 295);
+  --ring: oklch(0.82 0.06 290);
 
-  --chart-1: oklch(0.76 0.12 295);
-  --chart-2: oklch(0.78 0.1 330);
-  --chart-3: oklch(0.78 0.09 250);
-  --chart-4: oklch(0.78 0.1 85);
-  --chart-5: oklch(0.78 0.07 200);
+  --chart-1: oklch(0.82 0.06 290);
+  --chart-2: oklch(0.78 0.07 250);
+  --chart-3: oklch(0.8 0.07 315);
+  --chart-4: oklch(0.85 0.08 88);
+  --chart-5: oklch(0.62 0.02 285);
 
-  --sidebar: oklch(0.21 0.018 295);
-  --sidebar-foreground: oklch(0.92 0.015 300);
-  --sidebar-primary: oklch(0.76 0.12 295);
-  --sidebar-primary-foreground: oklch(0.2 0.03 295);
-  --sidebar-accent: oklch(0.33 0.05 295);
-  --sidebar-accent-foreground: oklch(0.95 0.015 300);
+  --sidebar: oklch(0.195 0.015 285);
+  --sidebar-foreground: oklch(0.94 0.008 290);
+  --sidebar-primary: oklch(0.82 0.06 290);
+  --sidebar-primary-foreground: oklch(0.21 0.025 285);
+  --sidebar-accent: oklch(0.32 0.035 290);
+  --sidebar-accent-foreground: oklch(0.96 0.008 290);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.76 0.12 295);
+  --sidebar-ring: oklch(0.82 0.06 290);
 
-  --skeleton-base: oklch(0.3 0.018 295);
-  --skeleton-highlight: oklch(0.38 0.018 295);
+  --skeleton-base: oklch(0.285 0.016 285);
+  --skeleton-highlight: oklch(0.36 0.016 285);
+
+  /* Painted behind the page by mascot-shared.css. */
+  --mascot-ambience: radial-gradient(
+    56rem 24rem at 50% -12%,
+    oklch(0.6 0.06 295 / 22%),
+    transparent 70%
+  );
 }
 
-/* Loads after the radius axis in theme-presets.css, so only apply the
- * rounder default while the user has no radius choice. */
+/* Loads after the radius axis in theme-presets.css, so only apply this
+ * default while the user has no radius choice. */
 [data-theme-preset='mascot-gpt']:not([data-theme-radius]) {
-  --radius: 1.125rem;
+  --radius: 1rem;
 }
 
 [data-theme-preset='mascot-gpt'] ::selection {

@@ -52,7 +52,7 @@ export const THEME_PRESETS = [
   {
     value: 'mascot-gpt',
     name: 'GPT',
-    swatches: ['oklch(0.93 0.04 300)', 'oklch(0.6 0.14 295)'],
+    swatches: ['oklch(0.94 0.015 290)', 'oklch(0.55 0.09 285)'],
   },
   {
     value: 'mascot-gemini',

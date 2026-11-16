@@ -47,7 +47,7 @@ export function MascotSidebarCard() {
             className='bg-accent size-12 shrink-0 rounded-lg object-cover'
           />
           <div className='flex min-w-0 flex-col gap-0.5'>
-            <p className='text-primary line-clamp-2 text-[0.625rem] leading-tight font-semibold tracking-[0.08em] uppercase'>
+            <p className='text-primary line-clamp-2 text-[0.625rem] leading-tight font-semibold tracking-normal uppercase'>
               {t(mascot.eyebrowKey)}
             </p>
             <p className='line-clamp-3 text-xs leading-snug font-medium'>

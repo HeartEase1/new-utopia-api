@@ -1,0 +1,92 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* ── Rules shared by every character theme ────────────────────────────────
+ * The overview balance panel blends a fixed pale green into its gradient.
+ * That green fights the character palettes (it turns the Grok and Claude
+ * dark panels olive), so the character themes run the gradient between
+ * their own two accents instead.
+ */
+[data-theme-preset^='mascot-'] [data-slot='overview-balance'] {
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--overview-accent-2) 12%, var(--background)) 0%,
+    color-mix(in oklch, var(--overview-accent-1) 9%, var(--background)) 100%
+  );
+}
+
+/* Every empty state (tables, card grids, the shared EmptyState) shows the
+ * character looking for something in place of the generic icon. The slot is
+ * decorative in both forms; its title and description carry the meaning. */
+[data-theme-preset^='mascot-'] [data-slot='empty-icon'][data-variant='icon'] {
+  width: 6rem;
+  height: 6rem;
+  border-radius: 0;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: contain;
+}
+[data-theme-preset^='mascot-']
+  [data-slot='empty-icon'][data-variant='icon']
+  > * {
+  display: none;
+}
+[data-theme-preset='mascot-claude']
+  [data-slot='empty-icon'][data-variant='icon'] {
+  background-image: url('../../assets/mascots/claude/searching.webp');
+}
+[data-theme-preset='mascot-deepseek']
+  [data-slot='empty-icon'][data-variant='icon'] {
+  background-image: url('../../assets/mascots/deepseek/searching.webp');
+}
+[data-theme-preset='mascot-gpt'] [data-slot='empty-icon'][data-variant='icon'] {
+  background-image: url('../../assets/mascots/gpt/searching.webp');
+}
+[data-theme-preset='mascot-gemini']
+  [data-slot='empty-icon'][data-variant='icon'] {
+  background-image: url('../../assets/mascots/gemini/searching.webp');
+}
+[data-theme-preset='mascot-grok']
+  [data-slot='empty-icon'][data-variant='icon'] {
+  background-image: url('../../assets/mascots/grok/searching.webp');
+}
+[data-theme-preset='mascot-glm'] [data-slot='empty-icon'][data-variant='icon'] {
+  background-image: url('../../assets/mascots/glm/searching.webp');
+}
+
+/* Ambience: each character theme may set --mascot-ambience (one or more
+ * gradients) and it is painted behind the page content, on a pseudo-element
+ * of the page shells so text contrast is untouched. Themes that leave the
+ * variable unset (GLM) get a plain canvas. */
+[data-theme-preset^='mascot-']
+  :is([data-slot='sidebar-inset'], [data-slot='public-layout']) {
+  isolation: isolate;
+}
+[data-theme-preset^='mascot-']
+  :is([data-slot='sidebar-inset'], [data-slot='public-layout'])::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  height: min(100%, 100svh);
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: var(--mascot-ambience, none);
+  background-repeat: no-repeat;
+}
