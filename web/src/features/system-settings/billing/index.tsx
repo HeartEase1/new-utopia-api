@@ -69,6 +69,8 @@ const defaultBillingSettings: BillingSettings = {
   CustomCallbackAddress: '',
   PayMethods: '',
   'payment_setting.amount_options': '',
+  'payment_setting.wallet_announcement': '',
+  'payment_setting.redemption_purchase': '',
   'payment_setting.amount_discount': '',
   'payment_setting.epay_sign_type': 'MD5',
   'payment_setting.epay_merchant_private_key': '',

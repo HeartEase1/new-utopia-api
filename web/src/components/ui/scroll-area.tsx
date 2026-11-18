@@ -23,8 +23,11 @@ import { cn } from '@/lib/utils'
 function ScrollArea({
   className,
   children,
+  viewportProps,
   ...props
-}: ScrollAreaPrimitive.Root.Props) {
+}: ScrollAreaPrimitive.Root.Props & {
+  viewportProps?: ScrollAreaPrimitive.Viewport.Props
+}) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot='scroll-area'
@@ -32,8 +35,12 @@ function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        {...viewportProps}
         data-slot='scroll-area-viewport'
-        className='focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1'
+        className={cn(
+          'focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1',
+          viewportProps?.className
+        )}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

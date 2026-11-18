@@ -196,7 +196,7 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasAny
+  const isAvailable = loading || plans.length > 0 || hasActive
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -258,7 +258,7 @@ export function SubscriptionPlansCard({
     )
   }
 
-  if (plans.length === 0 && !hasAny) {
+  if (plans.length === 0 && !hasActive) {
     return null
   }
 

@@ -9,8 +9,10 @@ import (
 )
 
 type PaymentSetting struct {
-	AmountOptions  []int           `json:"amount_options"`
-	AmountDiscount map[int]float64 `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
+	AmountOptions      []int           `json:"amount_options"`
+	AmountDiscount     map[int]float64 `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
+	WalletAnnouncement string          `json:"wallet_announcement"`
+	RedemptionPurchase string          `json:"redemption_purchase"`
 
 	ComplianceConfirmed    bool   `json:"compliance_confirmed"`
 	ComplianceTermsVersion string `json:"compliance_terms_version"`

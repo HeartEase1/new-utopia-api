@@ -105,6 +105,10 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	common.OptionMapRWMutex.RLock()
+	walletAnnouncement := operation_setting.GetPaymentSetting().WalletAnnouncement
+	redemptionPurchase := operation_setting.GetPaymentSetting().RedemptionPurchase
+	common.OptionMapRWMutex.RUnlock()
 	data := gin.H{
 		"enable_online_topup":              isEpayTopUpEnabled(),
 		"enable_alipay_f2f_topup":          isAlipayF2FTopUpEnabled(),
@@ -130,6 +134,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
+		"wallet_announcement":     walletAnnouncement,
+		"redemption_purchase":     redemptionPurchase,
 	}
 	common.ApiSuccess(c, data)
 }

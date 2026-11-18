@@ -316,6 +316,8 @@ export type BillingSettings = {
   CustomCallbackAddress: string
   PayMethods: string
   'payment_setting.amount_options': string
+  'payment_setting.wallet_announcement': string
+  'payment_setting.redemption_purchase': string
   'payment_setting.amount_discount': string
   'payment_setting.epay_sign_type': string
   'payment_setting.epay_merchant_private_key': string

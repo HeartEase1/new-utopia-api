@@ -137,6 +137,10 @@ export interface TopupInfo {
   discount: Record<number, number>
   /** Optional topup link for purchasing codes */
   topup_link?: string
+  /** Optional wallet announcement shown above amount presets */
+  wallet_announcement?: string
+  /** JSON object describing where to buy redemption codes */
+  redemption_purchase?: string
   /** Whether Creem topup is enabled */
   enable_creem_topup?: boolean
   /** Available Creem products */

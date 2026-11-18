@@ -150,6 +150,10 @@ const BILLING_SECTIONS = [
           CustomCallbackAddress: settings.CustomCallbackAddress,
           PayMethods: settings.PayMethods,
           AmountOptions: settings['payment_setting.amount_options'],
+          WalletAnnouncement:
+            settings['payment_setting.wallet_announcement'] ?? '',
+          RedemptionPurchase:
+            settings['payment_setting.redemption_purchase'] ?? '',
           AmountDiscount: settings['payment_setting.amount_discount'],
           StripeApiSecret: settings.StripeApiSecret,
           StripeWebhookSecret: settings.StripeWebhookSecret,

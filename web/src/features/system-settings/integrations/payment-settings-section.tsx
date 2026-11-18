@@ -56,6 +56,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getPaymentErrorTranslation } from '@/features/wallet/lib/payment'
+import { redemptionPurchaseSchema } from '@/features/wallet/lib/redemption-purchase'
 import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 
@@ -74,6 +75,7 @@ import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
+import { RedemptionPurchaseEditor } from './redemption-purchase-editor'
 import {
   formatJsonForEditor,
   getJsonError,
@@ -153,6 +155,28 @@ const paymentSchema = z.object({
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: error,
+      })
+    }
+  }),
+  WalletAnnouncement: z
+    .string()
+    .max(2000, 'Wallet announcement must not exceed 2000 characters'),
+  RedemptionPurchase: z.string().superRefine((value, ctx) => {
+    if (!value.trim()) return
+    try {
+      const result = redemptionPurchaseSchema.safeParse(JSON.parse(value))
+      if (!result.success) {
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            result.error.issues[0]?.message ||
+            'Invalid redemption purchase settings',
+        })
+      }
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Invalid redemption purchase settings',
       })
     }
   }),
@@ -446,6 +470,8 @@ export function PaymentSettingsSection({
       PayMethods: values.PayMethods.trim(),
       AmountOptions: values.AmountOptions.trim(),
       AmountDiscount: values.AmountDiscount.trim(),
+      WalletAnnouncement: values.WalletAnnouncement.trim(),
+      RedemptionPurchase: values.RedemptionPurchase.trim(),
       StripeApiSecret: values.StripeApiSecret.trim(),
       StripeWebhookSecret: values.StripeWebhookSecret.trim(),
       StripePriceId: values.StripePriceId.trim(),
@@ -493,6 +519,8 @@ export function PaymentSettingsSection({
       PayMethods: initialRef.current.PayMethods.trim(),
       AmountOptions: initialRef.current.AmountOptions.trim(),
       AmountDiscount: initialRef.current.AmountDiscount.trim(),
+      WalletAnnouncement: initialRef.current.WalletAnnouncement.trim(),
+      RedemptionPurchase: initialRef.current.RedemptionPurchase.trim(),
       StripeApiSecret: initialRef.current.StripeApiSecret.trim(),
       StripeWebhookSecret: initialRef.current.StripeWebhookSecret.trim(),
       StripePriceId: initialRef.current.StripePriceId.trim(),
@@ -606,6 +634,22 @@ export function PaymentSettingsSection({
       updates.push({
         key: 'payment_setting.amount_discount',
         value: sanitized.AmountDiscount,
+      })
+    }
+
+    if (sanitized.WalletAnnouncement !== initial.WalletAnnouncement) {
+      updates.push({
+        key: 'payment_setting.wallet_announcement',
+        value: sanitized.WalletAnnouncement,
+      })
+    }
+    if (
+      normalizeJsonForComparison(sanitized.RedemptionPurchase) !==
+      normalizeJsonForComparison(initial.RedemptionPurchase)
+    ) {
+      updates.push({
+        key: 'payment_setting.redemption_purchase',
+        value: sanitized.RedemptionPurchase,
       })
     }
 
@@ -1191,6 +1235,54 @@ export function PaymentSettingsSection({
                         </FormControl>
                         <FormDescription>
                           {t('Discount map by recharge amount (JSON object)')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className='grid gap-6 md:grid-cols-2 md:items-start'>
+                  <FormField
+                    control={form.control}
+                    name='WalletAnnouncement'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Wallet announcement')}</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            maxLength={2000}
+                            placeholder={t(
+                              'Optional notice shown above wallet amount options'
+                            )}
+                            rows={4}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Long notices scroll automatically in the wallet and pause when hovered.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='RedemptionPurchase'
+                    render={({ field }) => (
+                      <FormItem>
+                        <h4 className='text-sm font-medium'>
+                          {t('Redemption code purchase')}
+                        </h4>
+                        <RedemptionPurchaseEditor
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                        <FormDescription>
+                          {t(
+                            'Fees and payment methods are display information. The linked store handles payment. Clear the link to hide the purchase button.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

@@ -205,6 +205,10 @@ func UpdateOption(c *gin.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
+	if err := operation_setting.ValidateWalletDisplayOption(option.Key, option.Value.(string)); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee", "referral_setting.percent":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
