@@ -5,11 +5,11 @@ import { WalletAnnouncement } from '../components/wallet-announcement'
 
 let animation: FrameRequestCallback | undefined
 let reducedMotion = false
-let contentHeight = 300
+let contentWidth = 900
 
 beforeEach(() => {
   reducedMotion = false
-  contentHeight = 300
+  contentWidth = 900
   animation = undefined
   vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
     matches: query.includes('prefers-reduced-motion') && reducedMotion,
@@ -21,10 +21,10 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
     dispatchEvent: () => true,
   }))
-  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(
-    () => contentHeight
+  vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(
+    () => contentWidth
   )
-  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(96)
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(320)
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     animation = callback
     return 1
@@ -36,33 +36,31 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals())
 
-it('scrolls overflowing text, pauses on hover, and preserves manual scrolling', () => {
-  render(<WalletAnnouncement content={'Notice\n'.repeat(15)} />)
+it('scrolls overflowing text sideways, pauses on hover, and honours manual scrolling', () => {
+  render(<WalletAnnouncement content='A very long wallet notice' />)
   const region = screen.getByRole('region', { name: 'Wallet announcement' })
-  let scrollTop = 0
-  Object.defineProperty(region, 'scrollTop', {
-    get: () => scrollTop,
+  let scrollLeft = 0
+  Object.defineProperty(region, 'scrollLeft', {
+    get: () => scrollLeft,
     set: (value: number) => {
-      scrollTop = Math.round(value)
+      scrollLeft = Math.round(value)
     },
   })
-  const start = performance.now() + 2100
+  const start = performance.now() + 5000
   act(() => {
+    // The first frames sit on the pause held at the start edge.
     animation?.(start)
-    animation?.(start + 16)
-    animation?.(start + 32)
-    animation?.(start + 48)
+    animation?.(start + 1500)
+    animation?.(start + 3000)
+    animation?.(start + 4500)
   })
-  expect(region.scrollTop).toBeGreaterThan(0)
-  const scrollArea = region.closest('[data-slot="scroll-area"]')
-  expect(scrollArea).not.toBeNull()
-  if (!scrollArea) throw new Error('Missing announcement scroll area')
-  fireEvent.mouseEnter(scrollArea)
+  expect(region.scrollLeft).toBeGreaterThan(0)
+  fireEvent.mouseEnter(region)
   expect(animation).toBeUndefined()
-  region.scrollTop = 100
+  region.scrollLeft = 100
   fireEvent.scroll(region)
-  expect(region.scrollTop).toBe(100)
-  fireEvent.mouseLeave(scrollArea)
+  expect(region.scrollLeft).toBe(100)
+  fireEvent.mouseLeave(region)
   expect(animation).toBeTypeOf('function')
   fireEvent.focus(region)
   expect(animation).toBeUndefined()
@@ -70,8 +68,17 @@ it('scrolls overflowing text, pauses on hover, and preserves manual scrolling', 
   expect(animation).toBeTypeOf('function')
 })
 
+it('drives the region with the wheel while overflowing', () => {
+  render(<WalletAnnouncement content='A very long wallet notice' />)
+  const region = screen.getByRole('region', { name: 'Wallet announcement' })
+  const scrollBy = vi.fn()
+  Object.defineProperty(region, 'scrollBy', { value: scrollBy })
+  fireEvent.wheel(region, { deltaY: 120 })
+  expect(scrollBy).toHaveBeenCalledWith({ left: 120 })
+})
+
 it('allows pausing autoplay and keeps touch scrolling paused until resumed', () => {
-  render(<WalletAnnouncement content={'Notice\n'.repeat(15)} />)
+  render(<WalletAnnouncement content='A very long wallet notice' />)
   fireEvent.click(screen.getByRole('button', { name: 'Pause scrolling' }))
   expect(animation).toBeUndefined()
   fireEvent.click(screen.getByRole('button', { name: 'Resume scrolling' }))
@@ -83,8 +90,15 @@ it('allows pausing autoplay and keeps touch scrolling paused until resumed', () 
   expect(screen.getByRole('button', { name: 'Resume scrolling' })).toBeVisible()
 })
 
+it('collapses line breaks into one line', () => {
+  render(<WalletAnnouncement content={'First line\nSecond line'} />)
+  expect(
+    screen.getByRole('region', { name: 'Wallet announcement' })
+  ).toHaveTextContent('First line · Second line')
+})
+
 it('does not animate short content or display an empty announcement', () => {
-  contentHeight = 48
+  contentWidth = 200
   const { rerender } = render(<WalletAnnouncement content='Short notice' />)
   expect(animation).toBeUndefined()
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
@@ -94,7 +108,7 @@ it('does not animate short content or display an empty announcement', () => {
 
 it('respects reduced motion and still exposes the full text for manual scrolling', () => {
   reducedMotion = true
-  render(<WalletAnnouncement content={'Notice\n'.repeat(15)} />)
+  render(<WalletAnnouncement content='A very long wallet notice' />)
   expect(animation).toBeUndefined()
   expect(
     screen.getByRole('region', { name: 'Wallet announcement' })

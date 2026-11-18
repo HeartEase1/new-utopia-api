@@ -8,13 +8,41 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
-// RedemptionPurchase describes an external store, not a payment or fee rule.
-type RedemptionPurchase struct {
+// RedemptionStore describes an external store, not a payment or fee rule.
+type RedemptionStore struct {
 	Name           string `json:"name"`
 	URL            string `json:"url"`
 	Fee            string `json:"fee"`
 	PaymentMethods string `json:"payment_methods"`
 }
+
+// RedemptionStoreList holds the stores shown in the wallet. Sites that saved
+// the earlier single-store object keep loading it as a one-item list.
+type RedemptionStoreList []RedemptionStore
+
+func (stores *RedemptionStoreList) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*stores = nil
+		return nil
+	}
+	if trimmed[0] == '[' {
+		var list []RedemptionStore
+		if err := common.Unmarshal(data, &list); err != nil {
+			return err
+		}
+		*stores = list
+		return nil
+	}
+	var store RedemptionStore
+	if err := common.Unmarshal(data, &store); err != nil {
+		return err
+	}
+	*stores = RedemptionStoreList{store}
+	return nil
+}
+
+const maxRedemptionStores = 20
 
 func ValidateWalletDisplayOption(key, value string) error {
 	switch key {
@@ -26,19 +54,35 @@ func ValidateWalletDisplayOption(key, value string) error {
 		if strings.TrimSpace(value) == "" {
 			return nil
 		}
-		var purchase *RedemptionPurchase
-		if len(value) > 16384 || common.UnmarshalJsonStr(value, &purchase) != nil || purchase == nil {
+		var stores RedemptionStoreList
+		if len(value) > 16384 || common.UnmarshalJsonStr(value, &stores) != nil {
 			return common.NewMessage("Invalid redemption purchase settings")
 		}
-		if utf8.RuneCountInString(purchase.Name) > 80 || utf8.RuneCountInString(purchase.Fee) > 200 || utf8.RuneCountInString(purchase.PaymentMethods) > 200 || len(purchase.URL) > 2048 {
+		if len(stores) > maxRedemptionStores {
 			return common.NewMessage("Invalid redemption purchase settings")
 		}
-		if purchase.URL != "" {
-			parsed, err := url.Parse(purchase.URL)
-			if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Hostname() == "" || parsed.User != nil || strings.ContainsAny(purchase.URL, "\\\r\n\t ") {
-				return common.NewMessage("Purchase link must be an HTTP or HTTPS URL without credentials")
+		for _, store := range stores {
+			if err := validateRedemptionStore(store); err != nil {
+				return err
 			}
 		}
+	}
+	return nil
+}
+
+func validateRedemptionStore(store RedemptionStore) error {
+	if utf8.RuneCountInString(store.Name) > 80 ||
+		utf8.RuneCountInString(store.Fee) > 200 ||
+		utf8.RuneCountInString(store.PaymentMethods) > 200 ||
+		len(store.URL) > 2048 {
+		return common.NewMessage("Invalid redemption purchase settings")
+	}
+	if store.URL == "" {
+		return nil
+	}
+	parsed, err := url.Parse(store.URL)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Hostname() == "" || parsed.User != nil || strings.ContainsAny(store.URL, "\\\r\n\t ") {
+		return common.NewMessage("Purchase link must be an HTTP or HTTPS URL without credentials")
 	}
 	return nil
 }

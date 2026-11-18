@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -107,7 +108,8 @@ func GetTopUpInfo(c *gin.Context) {
 
 	common.OptionMapRWMutex.RLock()
 	walletAnnouncement := operation_setting.GetPaymentSetting().WalletAnnouncement
-	redemptionPurchase := operation_setting.GetPaymentSetting().RedemptionPurchase
+	redemptionPurchase := slices.Clone(operation_setting.GetPaymentSetting().RedemptionPurchase)
+	showSubscriptionPlans := operation_setting.GetPaymentSetting().ShowSubscriptionPlans
 	common.OptionMapRWMutex.RUnlock()
 	data := gin.H{
 		"enable_online_topup":              isEpayTopUpEnabled(),
@@ -136,6 +138,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"topup_link":              common.TopUpLink,
 		"wallet_announcement":     walletAnnouncement,
 		"redemption_purchase":     redemptionPurchase,
+		"show_subscription_plans": showSubscriptionPlans,
 	}
 	common.ApiSuccess(c, data)
 }

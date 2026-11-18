@@ -13,15 +13,23 @@ const topupInfo: TopupInfo = {
   stripe_min_topup: 1,
   amount_options: [],
   discount: {},
-  redemption_purchase: JSON.stringify({
-    name: 'Utopia Store',
-    url: 'https://store.example/codes',
-    fee: '2%',
-    payment_methods: 'Alipay / WeChat Pay',
-  }),
+  redemption_purchase: JSON.stringify([
+    {
+      name: 'Utopia Store',
+      url: 'https://store.example/codes',
+      fee: '2%',
+      payment_methods: 'Alipay / WeChat Pay',
+    },
+    {
+      name: 'Backup Store',
+      url: 'https://backup.example/codes',
+      fee: '',
+      payment_methods: '',
+    },
+  ]),
 }
 
-it('shows the configured store details and lets the user redeem with Enter', () => {
+it('lists every configured store and lets the user redeem with Enter', () => {
   const redeem = vi.fn()
   function WalletRedemption() {
     const [code, setCode] = useState('')
@@ -36,18 +44,35 @@ it('shows the configured store details and lets the user redeem with Enter', () 
     )
   }
   render(<WalletRedemption />)
-  expect(screen.getByRole('link', { name: 'Utopia Store' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: /Utopia Store/ })).toHaveAttribute(
     'href',
     'https://store.example/codes'
   )
-  expect(screen.getByText('2%')).toBeVisible()
-  expect(screen.getByText('Alipay / WeChat Pay')).toBeVisible()
+  expect(screen.getByRole('link', { name: /Backup Store/ })).toHaveAttribute(
+    'href',
+    'https://backup.example/codes'
+  )
+  expect(screen.getByText('2% · Alipay / WeChat Pay')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Redeem' })).toBeDisabled()
   fireEvent.change(screen.getByLabelText('Have a Code?'), {
     target: { value: 'test-code' },
   })
   fireEvent.submit(screen.getByRole('form', { name: 'Redeem' }))
   expect(redeem).toHaveBeenCalledExactlyOnceWith('test-code')
+})
+
+it('keeps the code form available while stores load', () => {
+  render(
+    <RedemptionCard
+      topupInfo={{ ...topupInfo, redemption_purchase: '' }}
+      loading
+      code=''
+      onCodeChange={vi.fn()}
+      onRedeem={vi.fn()}
+      redeeming={false}
+    />
+  )
+  expect(screen.queryByLabelText('Have a Code?')).not.toBeInTheDocument()
 })
 
 it.each([
@@ -57,7 +82,10 @@ it.each([
 ])('does not render unsafe purchase link %s', (url) => {
   render(
     <RedemptionCard
-      topupInfo={{ ...topupInfo, redemption_purchase: JSON.stringify({ url }) }}
+      topupInfo={{
+        ...topupInfo,
+        redemption_purchase: JSON.stringify([{ name: 'Store', url }]),
+      }}
       code=''
       onCodeChange={vi.fn()}
       onRedeem={vi.fn()}
@@ -66,6 +94,28 @@ it.each([
   )
   expect(screen.queryByRole('link')).not.toBeInTheDocument()
   expect(screen.getByLabelText('Have a Code?')).toBeVisible()
+})
+
+it('reads the legacy single-store setting as a one-item list', () => {
+  render(
+    <RedemptionCard
+      topupInfo={{
+        ...topupInfo,
+        redemption_purchase: JSON.stringify({
+          name: 'Legacy Store',
+          url: 'https://legacy.example/codes',
+        }),
+      }}
+      code=''
+      onCodeChange={vi.fn()}
+      onRedeem={vi.fn()}
+      redeeming={false}
+    />
+  )
+  expect(screen.getByRole('link', { name: /Legacy Store/ })).toHaveAttribute(
+    'href',
+    'https://legacy.example/codes'
+  )
 })
 
 it('keeps legacy links until new settings are saved and hides a cleared link', () => {
@@ -94,9 +144,26 @@ it('keeps legacy links until new settings are saved and hides a cleared link', (
       {...props}
       topupInfo={{
         ...topupInfo,
-        redemption_purchase: '{"url":""}',
+        redemption_purchase: '[{"url":""}]',
         topup_link: 'https://legacy.example',
       }}
+    />
+  )
+  expect(screen.queryByRole('link')).not.toBeInTheDocument()
+})
+
+it('keeps an explicitly emptied store list hidden even when a legacy link exists', () => {
+  render(
+    <RedemptionCard
+      topupInfo={{
+        ...topupInfo,
+        redemption_purchase: [],
+        topup_link: 'https://legacy.example',
+      }}
+      code=''
+      onCodeChange={vi.fn()}
+      onRedeem={vi.fn()}
+      redeeming={false}
     />
   )
   expect(screen.queryByRole('link')).not.toBeInTheDocument()

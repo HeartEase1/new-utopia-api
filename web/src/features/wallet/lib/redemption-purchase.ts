@@ -15,7 +15,7 @@ export function isPurchaseUrl(value: string): boolean {
   }
 }
 
-export const redemptionPurchaseSchema = z.object({
+export const redemptionStoreSchema = z.object({
   name: z.string().max(80, 'Invalid redemption purchase settings').default(''),
   url: z
     .string()
@@ -32,25 +32,57 @@ export const redemptionPurchaseSchema = z.object({
     .default(''),
 })
 
-export type RedemptionPurchase = z.infer<typeof redemptionPurchaseSchema>
+export type RedemptionStore = z.infer<typeof redemptionStoreSchema>
 
-export function parseRedemptionPurchase(raw?: string): RedemptionPurchase {
-  const empty = { name: '', url: '', fee: '', payment_methods: '' }
-  if (!raw?.trim()) return empty
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return empty
-    // Keep incomplete fields editable; validation happens when saving or linking.
-    for (const key of Object.keys(empty) as (keyof RedemptionPurchase)[]) {
-      if (
-        key in parsed &&
-        typeof parsed[key as keyof typeof parsed] === 'string'
-      ) {
-        empty[key] = parsed[key as keyof typeof parsed]
-      }
-    }
-    return empty
-  } catch {
-    return empty
+export const redemptionStoreListSchema = z
+  .array(redemptionStoreSchema)
+  .max(20, 'Invalid redemption purchase settings')
+
+export const MAX_REDEMPTION_STORES = 20
+
+const emptyStore: RedemptionStore = {
+  name: '',
+  url: '',
+  fee: '',
+  payment_methods: '',
+}
+
+function normalizeStore(value: unknown): RedemptionStore | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const store = { ...emptyStore }
+  // Keep incomplete fields editable; validation happens when saving or linking.
+  for (const key of Object.keys(emptyStore) as (keyof RedemptionStore)[]) {
+    const field = (value as Record<string, unknown>)[key]
+    if (typeof field === 'string') store[key] = field
   }
+  return store
+}
+
+/**
+ * Reads the saved storefront setting. Sites that saved the earlier single-store
+ * object still load it as a one-item list.
+ */
+export function parseRedemptionStores(raw?: unknown): RedemptionStore[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map(normalizeStore)
+      .filter((store): store is RedemptionStore => store !== null)
+      .slice(0, MAX_REDEMPTION_STORES)
+  }
+  if (typeof raw === 'string') {
+    if (!raw.trim()) return []
+    try {
+      return parseRedemptionStores(JSON.parse(raw) as unknown)
+    } catch {
+      return []
+    }
+  }
+  const single = normalizeStore(raw)
+  return single ? [single] : []
+}
+
+export function serializeRedemptionStores(stores: RedemptionStore[]): string {
+  // Always emit an array: the backend clears the list from the JSON value, and
+  // an empty string would leave the previous stores in memory.
+  return JSON.stringify(stores, null, 2)
 }

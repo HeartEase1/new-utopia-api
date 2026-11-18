@@ -9,10 +9,12 @@ import (
 )
 
 type PaymentSetting struct {
-	AmountOptions      []int           `json:"amount_options"`
-	AmountDiscount     map[int]float64 `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
-	WalletAnnouncement string          `json:"wallet_announcement"`
-	RedemptionPurchase string          `json:"redemption_purchase"`
+	AmountOptions      []int               `json:"amount_options"`
+	AmountDiscount     map[int]float64     `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
+	WalletAnnouncement string              `json:"wallet_announcement"`
+	RedemptionPurchase RedemptionStoreList `json:"redemption_purchase"`
+	// 钱包页面是否显示订阅套餐卡片；关闭后该位置只保留兑换码入口。
+	ShowSubscriptionPlans bool `json:"show_subscription_plans"`
 
 	ComplianceConfirmed    bool   `json:"compliance_confirmed"`
 	ComplianceTermsVersion string `json:"compliance_terms_version"`
@@ -43,6 +45,8 @@ var paymentSetting = PaymentSetting{
 	AmountDiscount: map[int]float64{},
 	// 没有保存过签名方式的站点按 MD5 运行，升级后行为不变。
 	EpaySignType: EpaySignTypeMD5,
+	// 升级前站点一直显示订阅套餐，默认保持显示。
+	ShowSubscriptionPlans: true,
 }
 
 func init() {

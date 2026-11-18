@@ -43,8 +43,6 @@ const defaults: PaymentValues = {
   PayMethods: '[]',
   AmountOptions: '[]',
   AmountDiscount: '{}',
-  WalletAnnouncement: '',
-  RedemptionPurchase: '',
   StripeApiSecret: '',
   StripeWebhookSecret: '',
   StripePriceId: '',
@@ -113,47 +111,12 @@ async function openEpayTab(values: Partial<PaymentValues> = {}) {
 
 afterEach(() => vi.restoreAllMocks())
 
-it('saves wallet notice and purchase details from the visual fields', async () => {
-  const request = vi
-    .spyOn(api, 'put')
-    .mockResolvedValue({ data: { success: true } })
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  render(
-    <QueryClientProvider client={client}>
-      <PaymentFixture values={defaults} />
-    </QueryClientProvider>
-  )
-  const user = userEvent.setup()
-  await user.type(
-    screen.getByLabelText('Wallet announcement'),
-    'Please check the payment amount.'
-  )
-  await user.type(screen.getByLabelText('Purchase button name'), 'Utopia Store')
-  await user.type(
-    screen.getByLabelText('Purchase link'),
-    'https://store.example'
-  )
-  await user.type(screen.getByLabelText('Fee description'), '2%')
-  await user.type(screen.getByLabelText('Supported payment methods'), 'Alipay')
-  await user.click(screen.getByRole('button', { name: 'Save all settings' }))
-  await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
-  expect(request.mock.calls.map((call) => call[1])).toEqual([
-    {
-      key: 'payment_setting.wallet_announcement',
-      value: 'Please check the payment amount.',
-    },
-    {
-      key: 'payment_setting.redemption_purchase',
-      value: JSON.stringify({
-        name: 'Utopia Store',
-        url: 'https://store.example',
-        fee: '2%',
-        payment_methods: 'Alipay',
-      }),
-    },
-  ])
+it('keeps wallet notice and storefront fields out of the payment gateway form', async () => {
+  await openEpayTab()
+  expect(screen.queryByLabelText('Wallet announcement')).not.toBeInTheDocument()
+  expect(
+    screen.queryByLabelText('Purchase button name')
+  ).not.toBeInTheDocument()
 })
 
 describe('Epay signature type', () => {

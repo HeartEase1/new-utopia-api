@@ -16,12 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  parseRedemptionStores,
+  serializeRedemptionStores,
+} from '@/features/wallet/lib/redemption-purchase'
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
+import { WalletDisplaySection } from '../integrations/wallet-display-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -132,6 +137,24 @@ const BILLING_SECTIONS = [
     ),
   },
   {
+    id: 'wallet',
+    titleKey: 'Wallet Display',
+    build: (settings: BillingSettings) => (
+      <WalletDisplaySection
+        defaultValues={{
+          announcement: settings['payment_setting.wallet_announcement'] ?? '',
+          redemptionStores: serializeRedemptionStores(
+            parseRedemptionStores(
+              settings['payment_setting.redemption_purchase'] ?? ''
+            )
+          ),
+          showSubscriptionPlans:
+            settings['payment_setting.show_subscription_plans'] ?? true,
+        }}
+      />
+    ),
+  },
+  {
     id: 'payment',
     titleKey: 'Payment Gateway',
     build: (settings: BillingSettings) => (
@@ -150,10 +173,6 @@ const BILLING_SECTIONS = [
           CustomCallbackAddress: settings.CustomCallbackAddress,
           PayMethods: settings.PayMethods,
           AmountOptions: settings['payment_setting.amount_options'],
-          WalletAnnouncement:
-            settings['payment_setting.wallet_announcement'] ?? '',
-          RedemptionPurchase:
-            settings['payment_setting.redemption_purchase'] ?? '',
           AmountDiscount: settings['payment_setting.amount_discount'],
           StripeApiSecret: settings.StripeApiSecret,
           StripeWebhookSecret: settings.StripeWebhookSecret,

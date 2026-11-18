@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { RedemptionStore } from './lib/redemption-purchase'
+
 // ============================================================================
 // Wallet Type Definitions
 // ============================================================================
@@ -139,8 +141,10 @@ export interface TopupInfo {
   topup_link?: string
   /** Optional wallet announcement shown above amount presets */
   wallet_announcement?: string
-  /** JSON object describing where to buy redemption codes */
-  redemption_purchase?: string
+  /** Stores that sell redemption codes */
+  redemption_purchase?: string | RedemptionStore[]
+  /** Whether the wallet page shows the subscription plan panel */
+  show_subscription_plans?: boolean
   /** Whether Creem topup is enabled */
   enable_creem_topup?: boolean
   /** Available Creem products */
@@ -172,7 +176,6 @@ export interface PresetAmount {
   /** Optional discount rate (0-1) */
   discount?: number
 }
-
 /**
  * Redemption code request
  */

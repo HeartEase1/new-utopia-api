@@ -68,6 +68,8 @@ interface SubscriptionPlansCardProps {
   onAvailabilityChange?: (available: boolean) => void
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
+  /** When false the admin has removed the panel from the wallet page. */
+  enabled?: boolean
 }
 
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
@@ -103,6 +105,7 @@ export function SubscriptionPlansCard({
   onAvailabilityChange,
   userQuota,
   onPurchaseSuccess,
+  enabled = true,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
 
@@ -196,7 +199,7 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasActive
+  const isAvailable = loading || (enabled && (plans.length > 0 || hasActive))
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -258,7 +261,7 @@ export function SubscriptionPlansCard({
     )
   }
 
-  if (plans.length === 0 && !hasActive) {
+  if (!enabled || (plans.length === 0 && !hasActive)) {
     return null
   }
 

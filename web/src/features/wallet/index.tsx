@@ -343,6 +343,7 @@ export function Wallet(props: WalletProps) {
               topupInfo={topupInfo}
               userQuota={user?.quota}
               onPurchaseSuccess={fetchUser}
+              enabled={topupInfo?.show_subscription_plans !== false}
             />
 
             <AffiliateRewardsCard
