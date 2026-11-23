@@ -170,6 +170,7 @@ func (user *User) GetSetting() dto.UserSetting {
 			common.SysLog(common.LogText("failed to unmarshal setting: %s", err.Error()))
 		}
 	}
+	setting.RecordIpLog = true
 	return setting
 }
 
@@ -186,6 +187,7 @@ func UpdateUserSetting(userId int, setting dto.UserSetting) error {
 	if userId == 0 {
 		return common.NewMessage("ID is empty!")
 	}
+	setting.RecordIpLog = true
 	settingBytes, err := common.Marshal(setting)
 	if err != nil {
 		return err

@@ -16,105 +16,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { Toaster, toast } from 'sonner'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-
-import type { UserProfile } from '@/features/profile/types'
-import { api } from '@/lib/api'
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 
 import { PrivacyCard } from '../privacy-card'
 
-const profile: UserProfile = {
-  id: 1,
-  username: 'alice',
-  display_name: 'Alice',
-  role: 1,
-  group: 'default',
-  quota: 1000000,
-  used_quota: 0,
-  request_count: 0,
-  status: 1,
-  aff_count: 0,
-  aff_quota: 0,
-  aff_history_quota: 0,
-  created_time: 0,
-  setting: JSON.stringify({ record_ip_log: true }),
-}
-
-afterEach(() => {
-  toast.dismiss()
-  vi.restoreAllMocks()
-})
-
-function renderPrivacy() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  const onUpdate = vi.fn()
-  const rendered = render(
-    <QueryClientProvider client={client}>
-      <PrivacyCard profile={profile} onUpdate={onUpdate} />
-      <Toaster />
-    </QueryClientProvider>
-  )
-  return { ...rendered, onUpdate }
-}
-
 describe('privacy settings', () => {
-  it('keyboard toggling off saves false and refreshes the displayed profile', async () => {
-    vi.spyOn(api, 'get').mockResolvedValue({
-      data: { success: true, data: profile },
-    })
-    const put = vi
-      .spyOn(api, 'put')
-      .mockResolvedValue({ data: { success: true } })
-    const user = userEvent.setup()
-    const { onUpdate } = renderPrivacy()
+  it('keeps IP recording enabled and unavailable to change', () => {
+    render(<PrivacyCard />)
+
     const toggle = screen.getByRole('switch', { name: 'Record IP Address' })
     expect(toggle).toBeChecked()
-    toggle.focus()
-    await user.keyboard(' ')
-    expect(toggle).not.toBeChecked()
-    await user.click(screen.getByRole('button', { name: 'Save Settings' }))
-    await waitFor(() => expect(onUpdate).toHaveBeenCalled())
-    expect(put).toHaveBeenCalledWith(
-      '/api/user/setting',
-      expect.objectContaining({ record_ip_log: false })
-    )
-  })
-
-  it('failed configuration reads preserve the edited toggle and do not submit or refresh', async () => {
-    vi.spyOn(api, 'get').mockRejectedValue(new Error('offline'))
-    const put = vi.spyOn(api, 'put')
-    const user = userEvent.setup()
-    const { onUpdate } = renderPrivacy()
-    await user.click(screen.getByRole('switch', { name: 'Record IP Address' }))
-    await user.click(screen.getByRole('button', { name: 'Save Settings' }))
-    expect(await screen.findByText('offline')).toBeVisible()
-    expect(put).not.toHaveBeenCalled()
-    expect(onUpdate).not.toHaveBeenCalled()
+    expect(toggle).toHaveAttribute('aria-disabled', 'true')
     expect(
-      screen.getByRole('switch', { name: 'Record IP Address' })
-    ).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeEnabled()
-  })
-
-  it('failed saves keep the draft available for retry without refreshing the profile', async () => {
-    vi.spyOn(api, 'get').mockResolvedValue({
-      data: { success: true, data: profile },
-    })
-    vi.spyOn(api, 'put').mockResolvedValue({ data: { success: false } })
-    const user = userEvent.setup()
-    const { onUpdate } = renderPrivacy()
-    await user.click(screen.getByRole('switch', { name: 'Record IP Address' }))
-    await user.click(screen.getByRole('button', { name: 'Save Settings' }))
-    expect(await screen.findByText('Failed to update settings')).toBeVisible()
-    expect(onUpdate).not.toHaveBeenCalled()
+      screen.getByText(
+        'IP addresses are always recorded for usage and error logs'
+      )
+    ).toBeVisible()
     expect(
-      screen.getByRole('switch', { name: 'Record IP Address' })
-    ).not.toBeChecked()
+      screen.queryByRole('button', { name: 'Save Settings' })
+    ).not.toBeInTheDocument()
   })
 })

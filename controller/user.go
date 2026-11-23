@@ -1332,7 +1332,6 @@ type UpdateUserSettingRequest struct {
 	UpstreamModelUpdateNotifyEnabled *bool   `json:"upstream_model_update_notify_enabled,omitempty"`
 	ChannelNotifyEnabled             *bool   `json:"channel_notify_enabled,omitempty"`
 	AcceptUnsetModelRatioModel       bool    `json:"accept_unset_model_ratio_model"`
-	RecordIpLog                      bool    `json:"record_ip_log"`
 }
 
 func UpdateUserSetting(c *gin.Context) {
@@ -1428,7 +1427,7 @@ func UpdateUserSetting(c *gin.Context) {
 	settings.NotifyType = req.QuotaWarningType
 	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
 	settings.AcceptUnsetRatioModel = req.AcceptUnsetModelRatioModel
-	settings.RecordIpLog = req.RecordIpLog
+	settings.RecordIpLog = true
 	if req.QuotaWarningEnabled != nil {
 		settings.QuotaWarningEnabled = req.QuotaWarningEnabled
 	}

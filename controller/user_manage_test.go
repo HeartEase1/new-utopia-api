@@ -644,9 +644,9 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 }
 
 // Saving notification settings starts from what the user stored: fields the
-// form does not manage stay, and switches an older client leaves out keep
-// their stored values. Only administrators change the channel and upstream
-// switches, and a threshold of 0 means the site default.
+// form does not manage stay, except IP logging is always enforced. Only
+// administrators change the channel and upstream switches, and a threshold
+// of 0 means the site default.
 func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 	on, off := true, false
 	stored := dto.UserSetting{
@@ -659,12 +659,14 @@ func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 		Language:                         "zhCN",
 		SidebarModules:                   `{"chat":{"enabled":true}}`,
 		BillingPreference:                "wallet_only",
+		RecordIpLog:                      false,
 	}
 	kept := func(setting dto.UserSetting) dto.UserSetting {
 		setting.Language, setting.SidebarModules, setting.BillingPreference = stored.Language, stored.SidebarModules, stored.BillingPreference
+		setting.RecordIpLog = true
 		return setting
 	}
-	switchesChanged := `{"notify_type":"email","quota_warning_threshold":0,"quota_warning_enabled":true,"channel_notify_enabled":false,"upstream_model_update_notify_enabled":false}`
+	switchesChanged := `{"notify_type":"email","quota_warning_threshold":0,"quota_warning_enabled":true,"channel_notify_enabled":false,"upstream_model_update_notify_enabled":false,"record_ip_log":false}`
 	for _, tc := range []struct {
 		name        string
 		role        int
@@ -701,7 +703,7 @@ func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 			name: "negative threshold",
 			role: common.RoleCommonUser,
 			body: `{"notify_type":"email","quota_warning_threshold":-1}`,
-			want: stored,
+			want: kept(stored),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -721,6 +723,11 @@ func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 			assert.Contains(t, recorder.Body.String(), fmt.Sprintf(`"success":%t`, tc.wantSuccess))
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, tc.want, user.GetSetting())
+			if tc.wantSuccess {
+				var persisted dto.UserSetting
+				require.NoError(t, common.Unmarshal([]byte(user.Setting), &persisted))
+				assert.True(t, persisted.RecordIpLog)
+			}
 		})
 	}
 }

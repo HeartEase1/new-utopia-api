@@ -129,7 +129,7 @@ export function Security() {
             <h3 id='security-privacy' className='text-sm font-semibold'>
               {t('Privacy')}
             </h3>
-            <PrivacyCard profile={profile} onUpdate={refreshProfile} />
+            <PrivacyCard />
           </section>
         </aside>
       </div>

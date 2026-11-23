@@ -233,6 +233,25 @@ func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 	assert.Equal(t, 270, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
 	assert.Equal(t, "zh", got.GetSetting().Language)
+	assert.True(t, got.GetSetting().RecordIpLog)
+
+	var persisted dto.UserSetting
+	require.NoError(t, common.Unmarshal([]byte(got.Setting), &persisted))
+	assert.True(t, persisted.RecordIpLog)
+
+	setting, err := GetUserSetting(user.Id, true)
+	require.NoError(t, err)
+	assert.True(t, setting.RecordIpLog)
+}
+
+func TestGetUserSettingsAlwaysEnablesIpRecording(t *testing.T) {
+	setting := `{"record_ip_log":false}`
+
+	user := User{Setting: setting}
+	assert.True(t, user.GetSetting().RecordIpLog)
+
+	userBase := UserBase{Setting: setting}
+	assert.True(t, userBase.GetSetting().RecordIpLog)
 }
 
 func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {

@@ -36,6 +36,7 @@ import { OverviewDashboard } from '../overview-dashboard'
 const storageKey = 'dashboard_overview_setup_guide_expanded'
 let client: QueryClient
 let keyLookupError: Error | null
+let dashboardStatus: Record<string, unknown>
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -52,6 +53,12 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   })
   keyLookupError = null
+  dashboardStatus = {
+    api_info_enabled: false,
+    announcements_enabled: false,
+    faq_enabled: false,
+    uptime_kuma_enabled: false,
+  }
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
     switch (url) {
       case '/api/token/?p=1&size=10':
@@ -68,10 +75,7 @@ beforeEach(() => {
         return {
           data: {
             data: {
-              api_info_enabled: false,
-              announcements_enabled: false,
-              faq_enabled: false,
-              uptime_kuma_enabled: false,
+              ...dashboardStatus,
             },
           },
         }
@@ -106,7 +110,31 @@ async function renderOverview() {
   )
 }
 
-describe('overview setup guide', () => {
+describe('overview dashboard', () => {
+  it('places API info and announcements in the first two-column row and hides uptime monitoring', async () => {
+    dashboardStatus = {
+      api_info_enabled: true,
+      api_info: [],
+      announcements_enabled: true,
+      announcements: [],
+      faq_enabled: false,
+      uptime_kuma_enabled: true,
+    }
+    await renderOverview()
+
+    const apiInfo = await screen.findByText('API Info')
+    const announcements = await screen.findByText('Announcements')
+    const firstRow = apiInfo.closest('.grid')
+
+    expect(firstRow).toBeTruthy()
+    expect(firstRow).toBe(announcements.closest('.grid'))
+    expect(firstRow).toHaveClass('lg:grid-cols-2')
+    expect(apiInfo.compareDocumentPosition(announcements)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(screen.queryByText('Uptime')).not.toBeInTheDocument()
+  })
+
   it('shows usage first and only a header entry when setup is complete', async () => {
     await renderOverview()
 
