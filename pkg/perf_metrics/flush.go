@@ -10,15 +10,19 @@ import (
 )
 
 func flushLoop() {
+	lastCleanup := time.Time{}
 	for {
 		interval := perf_metrics_setting.GetFlushIntervalMinutes()
 		time.Sleep(time.Duration(interval) * time.Minute)
 		setting := perf_metrics_setting.GetSetting()
+		if lastCleanup.IsZero() || time.Since(lastCleanup) >= 24*time.Hour {
+			cleanupExpiredMetrics(setting.RetentionDays)
+			lastCleanup = time.Now()
+		}
 		if !setting.Enabled {
 			continue
 		}
 		flushCompletedBuckets()
-		cleanupExpiredMetrics(setting.RetentionDays)
 	}
 }
 

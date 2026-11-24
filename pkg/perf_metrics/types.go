@@ -1,6 +1,9 @@
 package perfmetrics
 
-import "sync/atomic"
+import (
+	"math"
+	"sync/atomic"
+)
 
 type Store interface {
 	Record(sample Sample)
@@ -83,6 +86,71 @@ type SummaryAllResult struct {
 	// RecentSuccessSeries contains up to 24 nonempty hours from the last 7 days,
 	// including requested models with no traffic in the summary window.
 	RecentSuccessSeries map[string][]SuccessRatePoint `json:"recent_success_series,omitempty"`
+}
+
+// AvailabilityHours is the number of hourly cells in an availability report.
+const AvailabilityHours = 24
+
+// AvailabilityStats aggregates one report row. The hourly slices hold
+// AvailabilityHours entries, oldest first, starting at the report's WindowStart.
+type AvailabilityStats struct {
+	RequestCount    int64   `json:"request_count"`
+	SuccessRate     float64 `json:"success_rate"`
+	AvgLatencyMs    int64   `json:"avg_latency_ms"`
+	AvgTps          float64 `json:"avg_tps"`
+	HourlyRequests  []int64 `json:"hourly_requests"`
+	HourlySuccesses []int64 `json:"hourly_successes"`
+}
+
+type AvailabilityModel struct {
+	ModelName string `json:"model_name"`
+	AvailabilityStats
+	Groups []AvailabilityGroup `json:"groups,omitempty"`
+}
+
+type AvailabilityGroup struct {
+	Group string `json:"group"`
+	AvailabilityStats
+	Models []AvailabilityModel `json:"models,omitempty"`
+}
+
+type AvailabilityResult struct {
+	WindowStart int64               `json:"window_start"`
+	WindowEnd   int64               `json:"window_end"`
+	Summary     AvailabilityStats   `json:"summary"`
+	Groups      []AvailabilityGroup `json:"groups"`
+	Models      []AvailabilityModel `json:"models"`
+}
+
+type availabilityTotals struct {
+	total counters
+	hours [AvailabilityHours]counters
+}
+
+func (t *availabilityTotals) add(hour int, value counters) {
+	for _, target := range []*counters{&t.total, &t.hours[hour]} {
+		target.requestCount += value.requestCount
+		target.successCount += value.successCount
+		target.totalLatencyMs += value.totalLatencyMs
+		target.outputTokens += value.outputTokens
+		target.generationMs += value.generationMs
+	}
+}
+
+func (t *availabilityTotals) stats() AvailabilityStats {
+	stats := AvailabilityStats{
+		RequestCount:    t.total.requestCount,
+		SuccessRate:     math.Round(successRate(t.total)*100) / 100,
+		AvgLatencyMs:    avg(t.total.totalLatencyMs, t.total.requestCount),
+		AvgTps:          math.Round(avgTps(t.total)*100) / 100,
+		HourlyRequests:  make([]int64, AvailabilityHours),
+		HourlySuccesses: make([]int64, AvailabilityHours),
+	}
+	for i, hour := range t.hours {
+		stats.HourlyRequests[i] = hour.requestCount
+		stats.HourlySuccesses[i] = hour.successCount
+	}
+	return stats
 }
 
 type bucketKey struct {

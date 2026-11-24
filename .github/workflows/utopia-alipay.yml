@@ -49,6 +49,7 @@ jobs:
         run: |
           go test ./controller -run '^TestAlipayF2F$' -count=1 -v
           go test ./model -run '^TestRequestLogsAlwaysStoreClientIP$' -count=1 -v
+          go test ./pkg/perf_metrics -run '^TestPerformanceAggregationAndFlush$' -count=1 -v
       - name: Record Redis version
         run: docker exec $(docker ps -q --filter ancestor=redis:7) redis-server --version
       - name: MySQL payment regression
@@ -56,17 +57,21 @@ jobs:
           ALIPAY_TEST_DIALECT: mysql
           ALIPAY_TEST_DSN: 'root:test-only@tcp(127.0.0.1:3306)/utopia_test?charset=utf8mb4&parseTime=true'
           TEST_MYSQL_DSN: 'root:test-only@tcp(127.0.0.1:3306)/utopia_test?charset=utf8mb4&parseTime=true'
+          TEST_PERF_MYSQL_DSN: 'root:test-only@tcp(127.0.0.1:3306)/utopia_test?charset=utf8mb4&parseTime=true'
         run: |
           go test ./controller -run '^TestAlipayF2F$' -count=1 -v
           go test ./model -run '^TestRequestLogsAlwaysStoreClientIP$' -count=1 -v
+          go test ./pkg/perf_metrics -run '^TestPerformanceAggregationAndFlush$' -count=1 -v
       - name: PostgreSQL payment regression
         env:
           ALIPAY_TEST_DIALECT: postgres
           ALIPAY_TEST_DSN: 'postgres://utopia:test-only@127.0.0.1:5432/utopia_test?sslmode=disable'
           TEST_POSTGRES_DSN: 'postgres://utopia:test-only@127.0.0.1:5432/utopia_test?sslmode=disable'
+          TEST_PERF_POSTGRES_DSN: 'postgres://utopia:test-only@127.0.0.1:5432/utopia_test?sslmode=disable'
         run: |
           go test ./controller -run '^TestAlipayF2F$' -count=1 -v
           go test ./model -run '^TestRequestLogsAlwaysStoreClientIP$' -count=1 -v
+          go test ./pkg/perf_metrics -run '^TestPerformanceAggregationAndFlush$' -count=1 -v
       - name: Existing payment regressions
         run: |
           go test ./model -run 'Alipay|TopUp|Topup|Recharge|Payment|Epay|Quota|Reserve|Redemption|Redeem|AuthCache|UserAuth' -count=1
@@ -95,7 +100,7 @@ jobs:
           bun-version: '1.4.4'
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun run test src/components/layout/__tests__ src/components/__tests__/password-input.test.tsx src/components/__tests__/password-strength.test.tsx src/hooks/__tests__/sidebar-config.test.tsx src/features/auth src/features/security src/features/setup src/features/dashboard/components/overview/__tests__/overview-dashboard.test.tsx src/features/users/components/__tests__/password-feedback.test.tsx src/features/wallet src/features/pricing src/features/system-settings/models/__tests__/group-settings.test.tsx src/features/system-settings/integrations src/features/system-settings/general/__tests__/pre-consume-settings.test.tsx src/features/request-processing src/features/system-info src/features/task-plugins src/context/__tests__ src/features/system-settings/site/__tests__
+      - run: bun run test src/components/layout/__tests__ src/components/__tests__/password-input.test.tsx src/components/__tests__/password-strength.test.tsx src/hooks/__tests__/sidebar-config.test.tsx src/features/auth src/features/security src/features/setup src/features/dashboard/components/overview/__tests__/overview-dashboard.test.tsx src/features/dashboard/components/__tests__/model-availability.test.tsx src/features/dashboard/lib/__tests__/availability.test.ts src/features/users/components/__tests__/password-feedback.test.tsx src/features/wallet src/features/pricing src/features/system-settings/models/__tests__/group-settings.test.tsx src/features/system-settings/integrations src/features/system-settings/general/__tests__/pre-consume-settings.test.tsx src/features/request-processing src/features/system-info src/features/task-plugins src/context/__tests__ src/features/system-settings/site/__tests__
       - name: Lint modified frontend files
         shell: bash
         run: |

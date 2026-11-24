@@ -33,13 +33,21 @@ function TooltipProvider({
   )
 }
 
-function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
+function Tooltip<Payload = unknown>({
+  ...props
+}: TooltipPrimitive.Root.Props<Payload>) {
   return <TooltipPrimitive.Root data-slot='tooltip' {...props} />
 }
 
-function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
+function TooltipTrigger<Payload = unknown>({
+  ...props
+}: TooltipPrimitive.Trigger.Props<Payload>) {
   return <TooltipPrimitive.Trigger data-slot='tooltip-trigger' {...props} />
 }
+
+// One tooltip shared by many detached triggers: pass the handle to `Tooltip`
+// and to every `TooltipTrigger`, each trigger carrying its own `payload`.
+const createTooltipHandle = TooltipPrimitive.createHandle
 
 function TooltipContent({
   className,
@@ -79,4 +87,10 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  createTooltipHandle,
+}

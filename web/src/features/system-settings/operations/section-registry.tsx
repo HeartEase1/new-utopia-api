@@ -53,7 +53,7 @@ const OPERATIONS_SECTIONS = [
           'perf_metrics_setting.bucket_time':
             settings['perf_metrics_setting.bucket_time'] ?? 'hour',
           'perf_metrics_setting.retention_days':
-            settings['perf_metrics_setting.retention_days'] ?? 0,
+            settings['perf_metrics_setting.retention_days'] ?? 2,
         }}
       />
     ),

@@ -75,3 +75,36 @@ export type PerfSummaryAllData = {
     recent_success_series?: Record<string, SuccessRatePoint[]>
   }
 }
+
+// The hourly arrays hold 24 entries, oldest first, starting at `window_start`.
+export type ModelAvailabilityStats = {
+  request_count: number
+  success_rate: number
+  avg_latency_ms: number
+  avg_tps: number
+  hourly_requests: number[]
+  hourly_successes: number[]
+}
+
+export type ModelAvailabilityGroup = ModelAvailabilityStats & {
+  group: string
+  models?: ModelAvailabilityModel[]
+}
+
+export type ModelAvailabilityModel = ModelAvailabilityStats & {
+  model_name: string
+  groups?: ModelAvailabilityGroup[]
+}
+
+export type ModelAvailabilityData = {
+  success: boolean
+  message?: string
+  data: {
+    window_start: number
+    window_end: number
+    summary: ModelAvailabilityStats
+    // Ordered like the model square's group list.
+    groups: ModelAvailabilityGroup[]
+    models: ModelAvailabilityModel[]
+  }
+}

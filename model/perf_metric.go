@@ -115,6 +115,35 @@ func GetPerfMetricsSummaryBucketsAll(startTs int64, endTs int64, groups []string
 	return summaries, err
 }
 
+type PerfMetricAvailability struct {
+	ModelName      string `json:"model_name"`
+	Group          string `json:"group" gorm:"column:group_name"`
+	BucketTs       int64  `json:"bucket_ts"`
+	RequestCount   int64  `json:"request_count"`
+	SuccessCount   int64  `json:"success_count"`
+	TotalLatencyMs int64  `json:"total_latency_ms"`
+	OutputTokens   int64  `json:"output_tokens"`
+	GenerationMs   int64  `json:"generation_ms"`
+}
+
+// GetPerfMetricAvailability returns one row per model, group and hour, so the
+// result stays bounded when buckets are finer than an hour.
+func GetPerfMetricAvailability(startTs int64, endTs int64, groups []string) ([]PerfMetricAvailability, error) {
+	var summaries []PerfMetricAvailability
+	const hourBucket = "bucket_ts - (bucket_ts % 3600)"
+	query := DB.Model(&PerfMetric{}).
+		Select("model_name, "+commonGroupCol+" AS group_name, "+hourBucket+" AS bucket_ts, SUM(request_count) AS request_count, SUM(success_count) AS success_count, SUM(total_latency_ms) AS total_latency_ms, SUM(output_tokens) AS output_tokens, SUM(generation_ms) AS generation_ms").
+		Where("bucket_ts >= ? AND bucket_ts <= ? AND request_count > 0", startTs, endTs)
+	if groups != nil {
+		if len(groups) == 0 {
+			return summaries, nil
+		}
+		query = query.Where(commonGroupCol+" IN ?", groups)
+	}
+	err := query.Group("model_name, " + commonGroupCol + ", " + hourBucket).Find(&summaries).Error
+	return summaries, err
+}
+
 // GetRecentPerfMetricSuccessBuckets reads the latest nonempty hours within
 // the supplied history window, independently of the summary's reporting window.
 func GetRecentPerfMetricSuccessBuckets(modelName string, startTs int64, endTs int64, groups []string, limit int) ([]PerfMetricSummaryBucket, error) {

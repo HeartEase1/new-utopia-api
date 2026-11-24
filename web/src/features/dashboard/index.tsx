@@ -103,6 +103,12 @@ const LazyPerformanceOverview = lazy(() =>
   }))
 )
 
+const LazyModelAvailability = lazy(() =>
+  import('./components/model-availability').then((m) => ({
+    default: m.ModelAvailability,
+  }))
+)
+
 const LazyUserCharts = lazy(() =>
   import('./components/users/user-charts').then((m) => ({
     default: m.UserCharts,
@@ -187,6 +193,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   },
   models: {
     titleKey: 'Model Call Analytics',
+  },
+  availability: {
+    titleKey: 'Model availability',
   },
   flow: {
     titleKey: 'Flow',
@@ -395,6 +404,13 @@ export function Dashboard() {
                 </Suspense>
               </FadeIn>
             </>
+          )}
+          {activeSection === 'availability' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyModelAvailability />
+              </Suspense>
+            </FadeIn>
           )}
           {activeSection === 'users' && (
             <FadeIn>

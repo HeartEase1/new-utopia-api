@@ -21,7 +21,7 @@ import { Gauge, HeartPulse, Timer } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
+import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import {
@@ -33,6 +33,8 @@ import {
 } from '@/features/performance-metrics/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
+
+import { MetricCell } from '../ui/metric-cell'
 
 const PERFORMANCE_WINDOW_HOURS = 24
 const TOP_MODEL_LIMIT = 6
@@ -146,38 +148,5 @@ export function PerformanceHealthPanel() {
         )}
       </div>
     </section>
-  )
-}
-
-function MetricCell(props: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  value: string
-  loading: boolean
-  valueClassName?: string
-  tone: IconBadgeTone
-}) {
-  const Icon = props.icon
-  return (
-    <div className='bg-muted/40 rounded-xl px-3 py-2.5'>
-      <div className='text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium'>
-        <IconBadge tone={props.tone} size='xs'>
-          <Icon />
-        </IconBadge>
-        <span className='truncate'>{props.label}</span>
-      </div>
-      {props.loading ? (
-        <Skeleton className='mt-1.5 h-5 w-16' />
-      ) : (
-        <div
-          className={cn(
-            'mt-1.5 font-mono text-sm font-semibold tabular-nums',
-            props.valueClassName
-          )}
-        >
-          {props.value}
-        </div>
-      )}
-    </div>
   )
 }

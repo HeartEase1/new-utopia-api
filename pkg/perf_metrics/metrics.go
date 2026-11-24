@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -341,6 +342,151 @@ func QuerySummaryAll(hours int, groups []string, recentModels ...string) (Summar
 		Summary: summarize(all), WindowStart: startTs, WindowEnd: endTs,
 		Models: models, RecentSuccessSeries: recentSeries,
 	}, nil
+}
+
+const availabilityCacheTTL = 30 * time.Second
+
+// availabilityCacheMaxEntries bounds the cache; distinct group lists are few
+// (one per set of usable groups), so overflow simply starts over.
+const availabilityCacheMaxEntries = 64
+
+type availabilityCacheEntry struct {
+	result    AvailabilityResult
+	expiresAt time.Time
+}
+
+var availabilityCache = struct {
+	sync.Mutex
+	entries map[string]availabilityCacheEntry
+}{entries: map[string]availabilityCacheEntry{}}
+
+// QueryAvailabilityCached serves QueryAvailability from a short-lived cache
+// keyed by the ordered group list, so polling dashboards share one
+// aggregation. The lock is held while computing: concurrent callers wait for
+// the result instead of repeating the query. Callers must not modify the result.
+func QueryAvailabilityCached(groups []string) (AvailabilityResult, error) {
+	encodedGroups, err := common.Marshal(groups)
+	if err != nil {
+		return AvailabilityResult{}, err
+	}
+	key := fmt.Sprintf("%t:%s", groups == nil, encodedGroups)
+	availabilityCache.Lock()
+	defer availabilityCache.Unlock()
+	if entry, ok := availabilityCache.entries[key]; ok && time.Now().Before(entry.expiresAt) {
+		return entry.result, nil
+	}
+	result, err := QueryAvailability(groups)
+	if err != nil {
+		return AvailabilityResult{}, err
+	}
+	if len(availabilityCache.entries) >= availabilityCacheMaxEntries {
+		clear(availabilityCache.entries)
+	}
+	availabilityCache.entries[key] = availabilityCacheEntry{result: result, expiresAt: time.Now().Add(availabilityCacheTTL)}
+	return result, nil
+}
+
+// QueryAvailability reports the last 24 hourly buckets per group and model.
+// Groups are returned in the order supplied, so callers decide the display order.
+func QueryAvailability(groups []string) (AvailabilityResult, error) {
+	startTs, endTs := queryWindow(time.Now(), AvailabilityHours)
+	rows, err := model.GetPerfMetricAvailability(startTs, endTs, groups)
+	if err != nil {
+		return AvailabilityResult{}, err
+	}
+	allowedGroups := allowedGroupSet(groups)
+	all := &availabilityTotals{}
+	groupTotals := make(map[string]*availabilityTotals)
+	modelTotals := make(map[string]*availabilityTotals)
+	// pairTotals keys carry a zero bucketTs: one entry per model and group.
+	pairTotals := make(map[bucketKey]*availabilityTotals)
+	merge := func(key bucketKey, value counters) {
+		hour := int((key.bucketTs - startTs) / 3600)
+		if value.requestCount == 0 || key.bucketTs < startTs || hour >= AvailabilityHours {
+			return
+		}
+		pair := bucketKey{model: key.model, group: key.group}
+		if _, ok := pairTotals[pair]; !ok {
+			pairTotals[pair] = &availabilityTotals{}
+		}
+		if _, ok := groupTotals[key.group]; !ok {
+			groupTotals[key.group] = &availabilityTotals{}
+		}
+		if _, ok := modelTotals[key.model]; !ok {
+			modelTotals[key.model] = &availabilityTotals{}
+		}
+		for _, totals := range []*availabilityTotals{all, groupTotals[key.group], modelTotals[key.model], pairTotals[pair]} {
+			totals.add(hour, value)
+		}
+	}
+	for _, row := range rows {
+		merge(bucketKey{model: row.ModelName, group: row.Group, bucketTs: row.BucketTs}, counters{
+			requestCount:   row.RequestCount,
+			successCount:   row.SuccessCount,
+			totalLatencyMs: row.TotalLatencyMs,
+			outputTokens:   row.OutputTokens,
+			generationMs:   row.GenerationMs,
+		})
+	}
+	hotBuckets.Range(func(key, value any) bool {
+		bucket := key.(bucketKey)
+		if bucket.bucketTs > endTs {
+			return true
+		}
+		if allowedGroups != nil {
+			if _, ok := allowedGroups[bucket.group]; !ok {
+				return true
+			}
+		}
+		merge(bucket, value.(*atomicBucket).snapshot())
+		return true
+	})
+
+	result := AvailabilityResult{
+		WindowStart: startTs, WindowEnd: endTs, Summary: all.stats(),
+		Groups: make([]AvailabilityGroup, 0, len(groupTotals)),
+		Models: make([]AvailabilityModel, 0, len(modelTotals)),
+	}
+	for group, totals := range groupTotals {
+		result.Groups = append(result.Groups, AvailabilityGroup{Group: group, AvailabilityStats: totals.stats()})
+	}
+	sort.Slice(result.Groups, func(i, j int) bool {
+		left, right := slices.Index(groups, result.Groups[i].Group), slices.Index(groups, result.Groups[j].Group)
+		if left != right {
+			return left >= 0 && (right < 0 || left < right)
+		}
+		return result.Groups[i].Group < result.Groups[j].Group
+	})
+	groupIndex := make(map[string]int, len(result.Groups))
+	for i, group := range result.Groups {
+		groupIndex[group.Group] = i
+	}
+	for modelName, totals := range modelTotals {
+		result.Models = append(result.Models, AvailabilityModel{ModelName: modelName, AvailabilityStats: totals.stats()})
+	}
+	sort.Slice(result.Models, func(i, j int) bool { return result.Models[i].ModelName < result.Models[j].ModelName })
+	modelIndex := make(map[string]int, len(result.Models))
+	for i, item := range result.Models {
+		modelIndex[item.ModelName] = i
+	}
+	for pair, totals := range pairTotals {
+		stats := totals.stats()
+		group := &result.Groups[groupIndex[pair.group]]
+		group.Models = append(group.Models, AvailabilityModel{ModelName: pair.model, AvailabilityStats: stats})
+		item := &result.Models[modelIndex[pair.model]]
+		item.Groups = append(item.Groups, AvailabilityGroup{Group: pair.group, AvailabilityStats: stats})
+	}
+	for i := range result.Groups {
+		models := result.Groups[i].Models
+		sort.Slice(models, func(a, b int) bool { return models[a].ModelName < models[b].ModelName })
+	}
+	for i := range result.Models {
+		modelGroups := result.Models[i].Groups
+		sort.Slice(modelGroups, func(a, b int) bool {
+			return groupIndex[modelGroups[a].Group] < groupIndex[modelGroups[b].Group]
+		})
+	}
+	return result, nil
 }
 
 func mergeModelTotals(totals map[string]counters, modelName string, value counters) {

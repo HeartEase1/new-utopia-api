@@ -245,6 +245,53 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			failure := &atomicBucket{}
 			failure.add(Sample{LatencyMs: 2000})
 			hotBuckets.Store(bucketKey{model: "test-model", group: "b", bucketTs: hour}, failure)
+			// Availability follows the supplied group order and fills the previous hour's cell.
+			availability, err := QueryAvailability([]string{"b", "a"})
+			require.NoError(t, err)
+			hourly := func(requests, successes int64) AvailabilityStats {
+				stats := AvailabilityStats{HourlyRequests: make([]int64, AvailabilityHours), HourlySuccesses: make([]int64, AvailabilityHours)}
+				stats.HourlyRequests[AvailabilityHours-2], stats.HourlySuccesses[AvailabilityHours-2] = requests, successes
+				stats.RequestCount = requests
+				return stats
+			}
+			statsA, statsB, statsAll := hourly(100, 100), hourly(1, 0), hourly(101, 100)
+			statsA.SuccessRate, statsA.AvgLatencyMs, statsA.AvgTps = 100, 1000, 5
+			statsB.AvgLatencyMs = 2000
+			statsAll.SuccessRate, statsAll.AvgLatencyMs, statsAll.AvgTps = 99.01, 1009, 5
+			assert.Equal(t, AvailabilityResult{
+				WindowStart: start, WindowEnd: availability.WindowEnd, Summary: statsAll,
+				Groups: []AvailabilityGroup{
+					{Group: "b", AvailabilityStats: statsB, Models: []AvailabilityModel{{ModelName: "test-model", AvailabilityStats: statsB}}},
+					{Group: "a", AvailabilityStats: statsA, Models: []AvailabilityModel{{ModelName: "test-model", AvailabilityStats: statsA}}},
+				},
+				Models: []AvailabilityModel{{
+					ModelName: "test-model", AvailabilityStats: statsAll,
+					Groups: []AvailabilityGroup{{Group: "b", AvailabilityStats: statsB}, {Group: "a", AvailabilityStats: statsA}},
+				}},
+			}, availability)
+			// A cached report is reused until it expires, even when new samples arrive.
+			clear(availabilityCache.entries)
+			t.Cleanup(func() { clear(availabilityCache.entries) })
+			cachedBefore, err := QueryAvailabilityCached([]string{"cache-only"})
+			require.NoError(t, err)
+			cacheSample := &atomicBucket{}
+			cacheSample.add(Sample{Success: true})
+			hotBuckets.Store(bucketKey{model: "cache-model", group: "cache-only", bucketTs: hour}, cacheSample)
+			cachedAfter, err := QueryAvailabilityCached([]string{"cache-only"})
+			require.NoError(t, err)
+			assert.Equal(t, cachedBefore, cachedAfter)
+			assert.Zero(t, cachedAfter.Summary.RequestCount)
+			uncached, err := QueryAvailability([]string{"cache-only"})
+			require.NoError(t, err)
+			assert.Equal(t, int64(1), uncached.Summary.RequestCount)
+			// Group-list cache keys must not collide when names contain the separator.
+			clear(availabilityCache.entries)
+			combinedGroup, err := QueryAvailabilityCached([]string{"a\x00b"})
+			require.NoError(t, err)
+			assert.Zero(t, combinedGroup.Summary.RequestCount)
+			separateGroups, err := QueryAvailabilityCached([]string{"a", "b"})
+			require.NoError(t, err)
+			assert.Equal(t, int64(101), separateGroups.Summary.RequestCount)
 			before, err := Query(QueryParams{Model: "test-model", Hours: 24, AllowedGroups: groups})
 			require.NoError(t, err)
 			require.NotNil(t, before.Summary)

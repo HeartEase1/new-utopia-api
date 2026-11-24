@@ -13,7 +13,7 @@ var perfMetricsSetting = PerfMetricsSetting{
 	Enabled:       true,
 	FlushInterval: 5,
 	BucketTime:    "hour",
-	RetentionDays: 0,
+	RetentionDays: 2,
 }
 
 func init() {
