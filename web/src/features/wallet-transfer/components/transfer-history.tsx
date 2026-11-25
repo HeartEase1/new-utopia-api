@@ -303,7 +303,7 @@ export function TransferReconciliationDialog(props: {
       onOpenChange={props.onOpenChange}
       title={t('Wallet transfer reconciliation')}
       description={t(
-        'Review completed transfers, users, amounts, fees, and received balances.'
+        'Every user’s transfers on this site, with search, date filter and the total fees collected.'
       )}
       contentClassName='max-h-[calc(100dvh-1rem)] max-sm:w-[calc(100vw-1rem)] sm:max-w-4xl'
     >

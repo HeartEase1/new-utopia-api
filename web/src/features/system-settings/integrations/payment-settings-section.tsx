@@ -159,7 +159,7 @@ const paymentSchema = z.object({
   WalletTransferFeePercent: z.coerce
     .number()
     .min(0)
-    .max(100)
+    .lt(100, 'The fee must be below 100%')
     .refine(
       (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8,
       'Use no more than two decimal places'

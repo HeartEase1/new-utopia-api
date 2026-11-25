@@ -63,7 +63,8 @@ func GetPaymentSetting() *PaymentSetting {
 }
 
 func ValidateWalletTransferFeePercent(value float64) bool {
-	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+	// 100% or more would leave the recipient nothing, so every transfer would fail.
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value >= 100 {
 		return false
 	}
 	fee := decimal.NewFromFloat(value)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -218,6 +219,12 @@ func TestWalletTransferRecipientSearchNeedsCompleteUsernameOrID(t *testing.T) {
 	}
 }
 
+func TestWalletTransferFeeMustLeaveTheRecipientSomething(t *testing.T) {
+	for fee, valid := range map[float64]bool{0: true, 1.5: true, 99.99: true, 100: false, -1: false, 1.234: false} {
+		assert.Equal(t, valid, operation_setting.ValidateWalletTransferFeePercent(fee), "fee %v", fee)
+	}
+}
+
 func TestWalletTransferDailyLimitIsHundredDisplayUnits(t *testing.T) {
 	for _, tc := range []struct {
 		displayType string
@@ -377,7 +384,7 @@ func TestWalletTransferPaymentPasswordFlowRequiresEmailCodeAndIsSingleUse(t *tes
 	assert.ErrorIs(t, err, ErrWalletPasswordFlowInvalid)
 }
 
-func TestWalletTransferPaymentPasswordEmailIsWaivedOnlyForRootWithoutEmail(t *testing.T) {
+func TestWalletTransferPaymentPasswordEmailIsWaivedOnlyForRoot(t *testing.T) {
 	prepareWalletTransferTest(t)
 	user, identity, loginPassword, _ := createWalletTransferTestAccount(t, "password-no-email", 0, false)
 	require.NoError(t, DB.AutoMigrate(&AuthFlow{}, &User{}, &UserSession{}))
@@ -411,6 +418,25 @@ func TestWalletTransferPaymentPasswordEmailIsWaivedOnlyForRootWithoutEmail(t *te
 	var security WalletSecurity
 	require.NoError(t, DB.Where("user_id = ?", user.Id).First(&security).Error)
 	assert.True(t, common.ValidatePasswordAndHash(newPassword, security.PasswordHash))
+
+	// A bound email does not bring the email step back for the root user: no
+	// address is returned, so no code is sent, and the current password still counts.
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("email", "root@example.com").Error)
+	changeToken, _, changeEmail, err := CreateWalletTransferPasswordFlow(identity, "change", codeHash)
+	require.NoError(t, err)
+	assert.Empty(t, changeEmail)
+	changedPassword := "another root passphrase"
+	changedHash, err := common.HashAccountPassword(changedPassword)
+	require.NoError(t, err)
+	err = CompleteWalletTransferPasswordFlow(identity, changeToken, "", "not the current password", "", "", changedPassword, changedHash)
+	assert.ErrorIs(t, err, ErrWalletPasswordCurrentInvalid)
+	require.NoError(t, CompleteWalletTransferPasswordFlow(identity, changeToken, "", newPassword, "", "", changedPassword, changedHash))
+
+	// An ordinary user with a bound email still gets a code to that address.
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("role", common.RoleCommonUser).Error)
+	_, _, ordinaryEmail, err := CreateWalletTransferPasswordFlow(identity, "change", codeHash)
+	require.NoError(t, err)
+	assert.Equal(t, "root@example.com", ordinaryEmail)
 }
 
 func TestWalletTransferPaymentPasswordMustDifferFromLoginAndCurrentPassword(t *testing.T) {

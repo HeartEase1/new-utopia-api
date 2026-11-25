@@ -86,56 +86,99 @@ export function WalletTransfer() {
   const emailReady = status?.has_email === true || status?.email_exempt === true
 
   return (
-    <SectionPageLayout>
-      <SectionPageLayout.Breadcrumb>
-        <Button
-          variant='ghost'
-          size='sm'
-          className='-ml-2'
-          render={<Link to='/wallet' />}
-        >
-          <ChevronLeft data-icon='inline-start' />
-          {t('Back to wallet')}
-        </Button>
-      </SectionPageLayout.Breadcrumb>
-      <SectionPageLayout.Title>{t('Balance transfer')}</SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        {isAdmin ? (
+    <>
+      <SectionPageLayout>
+        <SectionPageLayout.Breadcrumb>
           <Button
-            variant='outline'
+            variant='ghost'
             size='sm'
-            onClick={() => setReconciliationOpen(true)}
+            className='-ml-2'
+            render={<Link to='/wallet' />}
           >
-            <ReceiptText data-icon='inline-start' />
-            {t('Reconciliation')}
+            <ChevronLeft data-icon='inline-start' />
+            {t('Back to wallet')}
           </Button>
-        ) : null}
-      </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        <div className='mx-auto w-full max-w-6xl space-y-4'>
-          {statusQuery.isError ? (
-            <ErrorState
-              className='min-h-40'
-              title={t('Could not load transfer security settings.')}
-              onRetry={() => void statusQuery.refetch()}
-            />
+        </SectionPageLayout.Breadcrumb>
+        <SectionPageLayout.Title>
+          {t('Balance transfer')}
+        </SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          {isAdmin ? (
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => setReconciliationOpen(true)}
+            >
+              <ReceiptText data-icon='inline-start' />
+              {t('Site-wide reconciliation')}
+            </Button>
           ) : null}
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <div className='mx-auto w-full max-w-6xl space-y-4'>
+            {statusQuery.isError ? (
+              <ErrorState
+                className='min-h-40'
+                title={t('Could not load transfer security settings.')}
+                onRetry={() => void statusQuery.refetch()}
+              />
+            ) : null}
 
-          {status?.limits_exempt ? (
-            <Alert>
-              <ShieldCheck />
-              <AlertTitle>
-                {t('No transfer limits for the super administrator')}
-              </AlertTitle>
-              <AlertDescription>
-                {status.two_fa_enabled
-                  ? t(
-                      'Your transfers have no daily amount cap and no attempt limit.'
-                    )
-                  : t(
-                      'Your transfers have no daily amount cap and no attempt limit. Enabling 2FA is still recommended to protect your balance.'
-                    )}
-                {status.two_fa_enabled ? null : (
+            {status?.limits_exempt ? (
+              <Alert>
+                <ShieldCheck />
+                <AlertTitle>
+                  {t('No transfer limits for the super administrator')}
+                </AlertTitle>
+                <AlertDescription>
+                  {status.two_fa_enabled
+                    ? t(
+                        'Your transfers have no daily amount cap and no attempt limit.'
+                      )
+                    : t(
+                        'Your transfers have no daily amount cap and no attempt limit. Enabling 2FA is still recommended to protect your balance.'
+                      )}
+                  {status.two_fa_enabled ? null : (
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      className='mt-2'
+                      render={<Link to='/security' />}
+                    >
+                      {t('Enable 2FA')}
+                    </Button>
+                  )}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {status && !status.limits_exempt && status.two_fa_enabled ? (
+              <Alert>
+                <ShieldCheck />
+                <AlertTitle>
+                  {t('Two-factor authentication is enabled')}
+                </AlertTitle>
+                <AlertDescription>
+                  {t(
+                    'Your transfer amount is not capped today, with up to {{count}} attempts.',
+                    { count: status.attempt_limit }
+                  )}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {status && !status.limits_exempt && !status.two_fa_enabled ? (
+              <Alert>
+                <AlertTriangle />
+                <AlertTitle>
+                  {t('Enable 2FA for higher transfer limits')}
+                </AlertTitle>
+                <AlertDescription>
+                  {t(
+                    'Without 2FA, you can transfer up to {{amount}} per day and start up to {{count}} transfers. Enabling 2FA removes the daily amount cap and raises the attempt limit to 100.',
+                    {
+                      amount: formatQuota(status.daily_limit_quota),
+                      count: status.attempt_limit,
+                    }
+                  )}
                   <Button
                     size='sm'
                     variant='outline'
@@ -144,147 +187,111 @@ export function WalletTransfer() {
                   >
                     {t('Enable 2FA')}
                   </Button>
-                )}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {status && !status.limits_exempt && status.two_fa_enabled ? (
-            <Alert>
-              <ShieldCheck />
-              <AlertTitle>
-                {t('Two-factor authentication is enabled')}
-              </AlertTitle>
-              <AlertDescription>
-                {t(
-                  'Your transfer amount is not capped today, with up to {{count}} attempts.',
-                  { count: status.attempt_limit }
-                )}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {status && !status.limits_exempt && !status.two_fa_enabled ? (
-            <Alert>
-              <AlertTriangle />
-              <AlertTitle>
-                {t('Enable 2FA for higher transfer limits')}
-              </AlertTitle>
-              <AlertDescription>
-                {t(
-                  'Without 2FA, you can transfer up to {{amount}} per day and start up to {{count}} transfers. Enabling 2FA removes the daily amount cap and raises the attempt limit to 100.',
-                  {
-                    amount: formatQuota(status.daily_limit_quota),
-                    count: status.attempt_limit,
-                  }
-                )}
-                <Button
-                  size='sm'
-                  variant='outline'
-                  className='mt-2'
-                  render={<Link to='/security' />}
-                >
-                  {t('Enable 2FA')}
-                </Button>
-              </AlertDescription>
-            </Alert>
-          ) : null}
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
-          <div className='grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]'>
+            <div className='grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]'>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('Transfer balance')}</CardTitle>
+                  <CardDescription>
+                    {t(
+                      'Send part of your wallet balance to another user of this site.'
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className='space-y-4'>
+                  {status && !status.has_login_password ? (
+                    <Alert variant='destructive'>
+                      <AlertTriangle />
+                      <AlertTitle>
+                        {t('A login password is required')}
+                      </AlertTitle>
+                      <AlertDescription>
+                        {t(
+                          'Set a login password in your account security settings before transferring balance.'
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  {status && !status.has_payment_password ? (
+                    <Alert>
+                      <AlertTriangle />
+                      <AlertTitle>{t('Payment password required')}</AlertTitle>
+                      <AlertDescription>
+                        {emailReady
+                          ? t(
+                              'Transfers are authorized with a separate payment password. Set one to start.'
+                            )
+                          : t(
+                              'Bind an email address before setting a payment password.'
+                            )}
+                        <div className='mt-2'>
+                          {emailReady ? (
+                            <Button
+                              size='sm'
+                              onClick={() => setPasswordOpen(true)}
+                            >
+                              {t('Set payment password')}
+                            </Button>
+                          ) : (
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              render={<Link to='/security' />}
+                            >
+                              {t('Bind email')}
+                            </Button>
+                          )}
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  {status &&
+                  !status.limits_exempt &&
+                  status.attempt_count >= status.attempt_limit ? (
+                    <Alert variant='destructive'>
+                      <AlertTriangle />
+                      <AlertDescription>
+                        {t('You have reached today’s transfer attempt limit.')}
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  <TransferForm
+                    status={status}
+                    availableQuota={availableQuota ?? 0}
+                    onAttempted={refresh}
+                  />
+                </CardContent>
+              </Card>
+
+              <TransferOverview
+                status={status}
+                availableQuota={availableQuota}
+                onManagePassword={() => setPasswordOpen(true)}
+              />
+            </div>
+
             <Card>
               <CardHeader>
-                <CardTitle>{t('Transfer balance')}</CardTitle>
+                <CardTitle>{t('Transfer history')}</CardTitle>
                 <CardDescription>
                   {t(
-                    'Send part of your wallet balance to another user of this site.'
+                    'Transfers you sent or received, with the amount, fee and credited amount.'
                   )}
                 </CardDescription>
               </CardHeader>
-              <CardContent className='space-y-4'>
-                {status && !status.has_login_password ? (
-                  <Alert variant='destructive'>
-                    <AlertTriangle />
-                    <AlertTitle>{t('A login password is required')}</AlertTitle>
-                    <AlertDescription>
-                      {t(
-                        'Set a login password in your account security settings before transferring balance.'
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
-                {status && !status.has_payment_password ? (
-                  <Alert>
-                    <AlertTriangle />
-                    <AlertTitle>{t('Payment password required')}</AlertTitle>
-                    <AlertDescription>
-                      {emailReady
-                        ? t(
-                            'Transfers are authorized with a separate payment password. Set one to start.'
-                          )
-                        : t(
-                            'Bind an email address before setting a payment password.'
-                          )}
-                      <div className='mt-2'>
-                        {emailReady ? (
-                          <Button
-                            size='sm'
-                            onClick={() => setPasswordOpen(true)}
-                          >
-                            {t('Set payment password')}
-                          </Button>
-                        ) : (
-                          <Button
-                            size='sm'
-                            variant='outline'
-                            render={<Link to='/security' />}
-                          >
-                            {t('Bind email')}
-                          </Button>
-                        )}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
-                {status &&
-                !status.limits_exempt &&
-                status.attempt_count >= status.attempt_limit ? (
-                  <Alert variant='destructive'>
-                    <AlertTriangle />
-                    <AlertDescription>
-                      {t('You have reached today’s transfer attempt limit.')}
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
-
-                <TransferForm
-                  status={status}
-                  availableQuota={availableQuota ?? 0}
-                  onAttempted={refresh}
-                />
+              <CardContent>
+                <TransferHistory currentUserId={self?.id ?? 0} />
               </CardContent>
             </Card>
-
-            <TransferOverview
-              status={status}
-              availableQuota={availableQuota}
-              onManagePassword={() => setPasswordOpen(true)}
-            />
           </div>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('Transfer history')}</CardTitle>
-              <CardDescription>
-                {t(
-                  'Review the sender or recipient, transfer amount, fee, and credited amount.'
-                )}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TransferHistory currentUserId={self?.id ?? 0} />
-            </CardContent>
-          </Card>
-        </div>
-      </SectionPageLayout.Content>
-
+      {/* Outside the layout: it renders only its own slots and drops other children. */}
       <PaymentPasswordDialog
         open={passwordOpen}
         onOpenChange={setPasswordOpen}
@@ -296,6 +303,6 @@ export function WalletTransfer() {
           currentUserId={self?.id ?? 0}
         />
       ) : null}
-    </SectionPageLayout>
+    </>
   )
 }

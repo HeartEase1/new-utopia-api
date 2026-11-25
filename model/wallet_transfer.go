@@ -180,10 +180,11 @@ type walletPasswordFlowState struct {
 	FailedAttempts int  `json:"failed_attempts"`
 }
 
-// The root user can already grant balance to anyone, so it may manage its
-// payment password without binding an email. Every other check still applies.
+// The root user can already grant balance to anyone, so it manages its
+// payment password without email verification, whether or not an email is
+// bound. Every other check still applies.
 func walletPasswordEmailExempt(user *User) bool {
-	return user.Role == common.RoleRootUser && NormalizeEmail(user.Email) == ""
+	return user.Role == common.RoleRootUser
 }
 
 func walletTransferDateKey(now time.Time) string {
@@ -382,13 +383,16 @@ func CreateWalletTransferPasswordFlow(identity AuthSessionIdentity, intent, code
 		if err := tx.Select("email", "role").First(&user, identity.UserID).Error; err != nil {
 			return err
 		}
-		email = NormalizeEmail(user.Email)
+		boundEmail := NormalizeEmail(user.Email)
 		emailExempt := walletPasswordEmailExempt(&user)
-		if email == "" && !emailExempt {
+		if boundEmail == "" && !emailExempt {
 			return ErrEmailBindingRequired
 		}
 		if emailExempt {
+			// No code is sent; the empty email tells the caller to skip delivery.
 			codeHash = ""
+		} else {
+			email = boundEmail
 		}
 		var security WalletSecurity
 		err := tx.Select("user_id").Where("user_id = ?", identity.UserID).First(&security).Error
@@ -405,7 +409,7 @@ func CreateWalletTransferPasswordFlow(identity AuthSessionIdentity, intent, code
 			Update("consumed_at", now).Error; err != nil {
 			return err
 		}
-		state, err := common.Marshal(walletPasswordFlowState{Intent: intent, Email: email, CodeHash: codeHash, EmailExempt: emailExempt})
+		state, err := common.Marshal(walletPasswordFlowState{Intent: intent, Email: boundEmail, CodeHash: codeHash, EmailExempt: emailExempt})
 		if err != nil {
 			return err
 		}

@@ -240,7 +240,7 @@ export function PaymentPasswordDialog(props: PaymentPasswordDialogProps) {
   )
   if (status?.email_exempt) {
     startPrompt = t(
-      'As the super administrator you can manage the payment password without binding an email.'
+      'As the super administrator you manage the payment password without email verification.'
     )
   } else if (status?.has_email) {
     startPrompt = t('We will send a one-time code to {{email}}.', {
