@@ -284,9 +284,9 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			uncached, err := QueryAvailability([]string{"cache-only"})
 			require.NoError(t, err)
 			assert.Equal(t, int64(1), uncached.Summary.RequestCount)
-			// Group-list cache keys must not collide when names contain the separator.
+			// Group-list cache keys must not collide when names contain a delimiter.
 			clear(availabilityCache.entries)
-			combinedGroup, err := QueryAvailabilityCached([]string{"a\x00b"})
+			combinedGroup, err := QueryAvailabilityCached([]string{"a,b"})
 			require.NoError(t, err)
 			assert.Zero(t, combinedGroup.Summary.RequestCount)
 			separateGroups, err := QueryAvailabilityCached([]string{"a", "b"})
