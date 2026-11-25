@@ -53,6 +53,7 @@ const defaults: PaymentValues = {
   CreemWebhookSecret: '',
   CreemTestMode: false,
   CreemProducts: '[]',
+  WalletTransferFeePercent: 0,
 }
 
 function PaymentFixture(props: { values: PaymentValues }) {

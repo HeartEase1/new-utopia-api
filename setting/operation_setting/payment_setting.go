@@ -1,18 +1,21 @@
 package operation_setting
 
 import (
+	"math"
 	"strings"
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/shopspring/decimal"
 )
 
 type PaymentSetting struct {
-	AmountOptions      []int               `json:"amount_options"`
-	AmountDiscount     map[int]float64     `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
-	WalletAnnouncement string              `json:"wallet_announcement"`
-	RedemptionPurchase RedemptionStoreList `json:"redemption_purchase"`
+	AmountOptions            []int               `json:"amount_options"`
+	AmountDiscount           map[int]float64     `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
+	WalletAnnouncement       string              `json:"wallet_announcement"`
+	RedemptionPurchase       RedemptionStoreList `json:"redemption_purchase"`
+	WalletTransferFeePercent float64             `json:"wallet_transfer_fee_percent"`
 	// 钱包页面是否显示订阅套餐卡片；关闭后该位置只保留兑换码入口。
 	ShowSubscriptionPlans bool `json:"show_subscription_plans"`
 
@@ -34,9 +37,10 @@ const (
 	EpaySignTypeMD5 = "MD5"
 	EpaySignTypeRSA = "RSA"
 
-	EpaySignTypeOptionKey           = "payment_setting.epay_sign_type"
-	EpayMerchantPrivateKeyOptionKey = "payment_setting.epay_merchant_private_key"
-	EpayPlatformPublicKeyOptionKey  = "payment_setting.epay_platform_public_key"
+	EpaySignTypeOptionKey             = "payment_setting.epay_sign_type"
+	EpayMerchantPrivateKeyOptionKey   = "payment_setting.epay_merchant_private_key"
+	EpayPlatformPublicKeyOptionKey    = "payment_setting.epay_platform_public_key"
+	WalletTransferFeePercentOptionKey = "payment_setting.wallet_transfer_fee_percent"
 )
 
 // 默认配置
@@ -56,6 +60,14 @@ func init() {
 
 func GetPaymentSetting() *PaymentSetting {
 	return &paymentSetting
+}
+
+func ValidateWalletTransferFeePercent(value float64) bool {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+		return false
+	}
+	fee := decimal.NewFromFloat(value)
+	return fee.Equal(fee.Round(2))
 }
 
 func IsPaymentComplianceConfirmed() bool {

@@ -142,7 +142,7 @@ describe('security sidebar visibility', () => {
 })
 
 describe('model availability sidebar entry', () => {
-  it('appears next to the dashboard and targets the availability page', () => {
+  it('appears between the dashboard and API keys as its own page', () => {
     const { result } = sidebarFor()
     const items =
       result.current.find((group) => group.id === 'general')?.items ?? []
@@ -158,25 +158,40 @@ describe('model availability sidebar entry', () => {
     )
     expect(availabilityItem).toMatchObject({
       title: 'Model availability',
-      url: '/dashboard/availability',
+      url: '/model-availability',
     })
     expect(
       items
-        .filter((item) => checkIsActive('/dashboard/availability', item))
+        .filter((item) => checkIsActive('/model-availability', item))
         .map((item) => item.title)
     ).toEqual(['Model availability'])
   })
 
-  it('follows the dashboard visibility setting', () => {
+  it('stays visible when the dashboard is hidden', () => {
     const { result } = sidebarFor({ console: { enabled: true, detail: false } })
     const titles = result.current
       .flatMap((group) => group.items)
       .map((item) => item.title)
 
     expect(titles).not.toContain('Dashboard')
-    expect(titles).not.toContain('Model availability')
-    expect(titles).toContain('API Keys')
+    expect(titles).toContain('Model availability')
   })
+
+  it.each([
+    [{ console: { enabled: true, availability: false } }, undefined],
+    [undefined, { console: { enabled: true, availability: false } }],
+  ])(
+    'can be hidden by the site or the user on its own (%j, %j)',
+    (admin, user) => {
+      const titles = sidebarFor(admin, user)
+        .result.current.flatMap((group) => group.items)
+        .map((item) => item.title)
+
+      expect(titles).not.toContain('Model availability')
+      expect(titles).toContain('Dashboard')
+      expect(titles).toContain('API Keys')
+    }
+  )
 })
 
 describe('audit log sidebar entry', () => {

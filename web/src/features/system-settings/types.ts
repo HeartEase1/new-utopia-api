@@ -319,6 +319,7 @@ export type BillingSettings = {
   'payment_setting.wallet_announcement': string
   'payment_setting.redemption_purchase': string
   'payment_setting.show_subscription_plans': boolean
+  'payment_setting.wallet_transfer_fee_percent': number
   'payment_setting.amount_discount': string
   'payment_setting.epay_sign_type': string
   'payment_setting.epay_merchant_private_key': string

@@ -137,6 +137,13 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
 				selfRoute.POST("/aff_transfer", middleware.UserCriticalRateLimit("aff-transfer"), controller.TransferAffQuota)
+				selfRoute.GET("/wallet-transfer/status", controller.GetWalletTransferStatus)
+				selfRoute.GET("/wallet-transfer/recipients", middleware.UserCriticalRateLimit("wallet-transfer-search"), controller.SearchWalletTransferRecipients)
+				selfRoute.GET("/wallet-transfer/history", controller.GetWalletTransferHistory)
+				selfRoute.POST("/wallet-transfer/quote", middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("wallet-transfer"), controller.CreateWalletTransferQuote)
+				selfRoute.POST("/wallet-transfer/confirm", middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("wallet-transfer"), controller.ConfirmWalletTransfer)
+				selfRoute.POST("/wallet-transfer/password/start", middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("wallet-transfer-password"), middleware.EmailVerificationRateLimit(), controller.StartWalletTransferPasswordFlow)
+				selfRoute.POST("/wallet-transfer/password/complete", middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("wallet-transfer-password"), controller.CompleteWalletTransferPasswordFlow)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
 				// 2FA routes
@@ -160,6 +167,7 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
+				adminRoute.GET("/wallet-transfers", controller.GetAdminWalletTransfers)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)

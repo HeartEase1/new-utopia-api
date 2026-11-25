@@ -26,6 +26,10 @@ import {
 
 export const Route = createFileRoute('/_authenticated/dashboard/$section')({
   beforeLoad: ({ params }) => {
+    // Model availability used to be a dashboard tab; keep its old links working.
+    if (params.section === 'availability') {
+      throw redirect({ to: '/model-availability' })
+    }
     const validSections = DASHBOARD_SECTION_IDS as unknown as string[]
     if (!validSections.includes(params.section)) {
       throw redirect({

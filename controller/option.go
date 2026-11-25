@@ -209,6 +209,13 @@ func UpdateOption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if option.Key == operation_setting.WalletTransferFeePercentOptionKey {
+		fee, err := strconv.ParseFloat(strings.TrimSpace(option.Value.(string)), 64)
+		if err != nil || !operation_setting.ValidateWalletTransferFeePercent(fee) {
+			common.ApiErrorT(c, "Wallet transfer fee must be between 0 and 100 with up to two decimal places.")
+			return
+		}
+	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee", "referral_setting.percent":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {

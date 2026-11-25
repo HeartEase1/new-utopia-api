@@ -87,7 +87,7 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
           },
           {
             title: t('Model availability'),
-            url: '/dashboard/availability',
+            url: '/model-availability',
             icon: Gauge,
           },
           {

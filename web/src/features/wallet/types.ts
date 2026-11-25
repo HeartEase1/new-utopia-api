@@ -252,6 +252,68 @@ export interface UserWalletData {
   group: string
 }
 
+export interface WalletTransferRecipient {
+  id: number
+  username: string
+  display_name?: string
+}
+
+export interface WalletTransferStatus {
+  has_login_password: boolean
+  has_email: boolean
+  email: string
+  has_payment_password: boolean
+  two_fa_enabled: boolean
+  attempt_count: number
+  attempt_limit: number
+  used_quota: number
+  daily_limit_quota: number
+  daily_limit_amount: number
+  display_type: string
+  display_symbol: string
+}
+
+export interface WalletTransferQuote {
+  recipient_id: number
+  recipient_username: string
+  recipient_display_name: string
+  amount: number
+  fee: number
+  received: number
+  fee_percent: string
+  daily_limit_quota: number
+  daily_limit_amount: number
+  display_type: string
+  display_symbol: string
+  expires_at: number
+}
+
+export interface WalletTransferQuoteResult {
+  quote_token: string
+  quote: WalletTransferQuote
+}
+
+export interface WalletTransferRecord {
+  id: number
+  sender_id: number
+  sender_username: string
+  sender_display_name: string
+  recipient_id: number
+  recipient_username: string
+  recipient_display_name: string
+  amount: number
+  fee: number
+  received: number
+  fee_percent: string
+  created_at: string
+}
+
+export interface WalletTransferPasswordFlow {
+  flow_token: string
+  email: string
+  expires_at: number
+}
+
 /**
  * Topup record status
  */

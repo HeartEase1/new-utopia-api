@@ -72,6 +72,7 @@ const defaultBillingSettings: BillingSettings = {
   'payment_setting.wallet_announcement': '',
   'payment_setting.redemption_purchase': '',
   'payment_setting.show_subscription_plans': true,
+  'payment_setting.wallet_transfer_fee_percent': 0,
   'payment_setting.amount_discount': '',
   'payment_setting.epay_sign_type': 'MD5',
   'payment_setting.epay_merchant_private_key': '',

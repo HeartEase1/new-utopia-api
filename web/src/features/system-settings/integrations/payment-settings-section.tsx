@@ -156,6 +156,14 @@ const paymentSchema = z.object({
       })
     }
   }),
+  WalletTransferFeePercent: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .refine(
+      (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8,
+      'Use no more than two decimal places'
+    ),
   StripeApiSecret: z.string(),
   StripeWebhookSecret: z.string(),
   StripePriceId: z.string(),
@@ -371,6 +379,7 @@ export function PaymentSettingsSection({
       PayMethods: formatJsonForEditor(initialFormValues.PayMethods),
       AmountOptions: formatJsonForEditor(initialFormValues.AmountOptions),
       AmountDiscount: formatJsonForEditor(initialFormValues.AmountDiscount),
+      WalletTransferFeePercent: initialFormValues.WalletTransferFeePercent,
       CreemProducts: formatJsonForEditor(initialFormValues.CreemProducts),
     },
   })
@@ -428,6 +437,7 @@ export function PaymentSettingsSection({
       PayMethods: formatJsonForEditor(parsedDefaults.PayMethods),
       AmountOptions: formatJsonForEditor(parsedDefaults.AmountOptions),
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
+      WalletTransferFeePercent: parsedDefaults.WalletTransferFeePercent,
       CreemProducts: formatJsonForEditor(parsedDefaults.CreemProducts),
     })
   }, [defaultsSignature, form])
@@ -446,6 +456,7 @@ export function PaymentSettingsSection({
       PayMethods: values.PayMethods.trim(),
       AmountOptions: values.AmountOptions.trim(),
       AmountDiscount: values.AmountDiscount.trim(),
+      WalletTransferFeePercent: values.WalletTransferFeePercent,
       StripeApiSecret: values.StripeApiSecret.trim(),
       StripeWebhookSecret: values.StripeWebhookSecret.trim(),
       StripePriceId: values.StripePriceId.trim(),
@@ -493,6 +504,7 @@ export function PaymentSettingsSection({
       PayMethods: initialRef.current.PayMethods.trim(),
       AmountOptions: initialRef.current.AmountOptions.trim(),
       AmountDiscount: initialRef.current.AmountDiscount.trim(),
+      WalletTransferFeePercent: initialRef.current.WalletTransferFeePercent,
       StripeApiSecret: initialRef.current.StripeApiSecret.trim(),
       StripeWebhookSecret: initialRef.current.StripeWebhookSecret.trim(),
       StripePriceId: initialRef.current.StripePriceId.trim(),
@@ -606,6 +618,15 @@ export function PaymentSettingsSection({
       updates.push({
         key: 'payment_setting.amount_discount',
         value: sanitized.AmountDiscount,
+      })
+    }
+
+    if (
+      sanitized.WalletTransferFeePercent !== initial.WalletTransferFeePercent
+    ) {
+      updates.push({
+        key: 'payment_setting.wallet_transfer_fee_percent',
+        value: sanitized.WalletTransferFeePercent,
       })
     }
 
@@ -1007,6 +1028,31 @@ export function PaymentSettingsSection({
                         </FormControl>
                         <FormDescription>
                           {t('Smallest USD amount users can recharge (Epay)')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='WalletTransferFeePercent'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Wallet transfer fee (%)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            min={0}
+                            max={100}
+                            step='0.01'
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'The sender pays this percentage as a transfer fee. The fee rounds up to the smallest quota unit.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

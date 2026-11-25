@@ -22,7 +22,7 @@ import type {
   ModelAvailabilityStats,
 } from '@/features/performance-metrics/types'
 
-import { ModelAvailability } from '../model-availability'
+import { AvailabilityReport } from '../availability-report'
 
 vi.mock('@/features/performance-metrics/api', () => ({
   getModelAvailability: vi.fn(),
@@ -103,7 +103,7 @@ function renderPage() {
   })
   return render(
     <QueryClientProvider client={client}>
-      <ModelAvailability />
+      <AvailabilityReport />
     </QueryClientProvider>
   )
 }

@@ -48,6 +48,9 @@ func cleanupAuthArtifacts() {
 	if err := model.DeleteExpiredAuthFlows(now); err != nil {
 		common.SysError(common.LogText("failed to delete expired authentication flows: %s", err.Error()))
 	}
+	if err := model.DeleteExpiredWalletTransferState(now); err != nil {
+		common.SysError(common.LogText("failed to delete expired wallet transfer attempts: %s", err.Error()))
+	}
 	accessTokenExpiredBefore := now.Unix() - int64(common.UserSessionRevokedRetentionDays)*24*60*60
 	if err := model.DeleteExpiredUserAccessTokens(accessTokenExpiredBefore); err != nil {
 		common.SysError(common.LogText("failed to delete expired access tokens: %s", err.Error()))

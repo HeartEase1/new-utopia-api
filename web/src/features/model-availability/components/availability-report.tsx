@@ -34,6 +34,7 @@ import {
   TooltipContent,
   createTooltipHandle,
 } from '@/components/ui/tooltip'
+import { MetricCell } from '@/features/dashboard/components/ui/metric-cell'
 import { getModelAvailability } from '@/features/performance-metrics/api'
 import {
   formatLatency,
@@ -66,7 +67,6 @@ import {
   type AvailabilityHourCell,
 } from './availability-hour-strip'
 import { AvailabilityCard, AvailabilityTableRow } from './availability-rows'
-import { MetricCell } from './ui/metric-cell'
 
 const REFRESH_INTERVAL_MS = 60 * 1000
 const COLUMN_COUNT = 7
@@ -85,7 +85,7 @@ const LEGEND_LEVELS: AvailabilityLevel[] = [
   'empty',
 ]
 
-export function ModelAvailability() {
+export function AvailabilityReport() {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [mode, setMode] = useState<AvailabilityMode>('group')
@@ -279,12 +279,9 @@ export function ModelAvailability() {
   return (
     <section className='bg-card overflow-hidden rounded-xl border shadow-xs'>
       <div className='flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-5'>
-        <div>
-          <h3 className='text-sm font-semibold'>{t('Model availability')}</h3>
-          <p className='text-muted-foreground mt-1 text-xs'>
-            {t('Based on request results from the last 24 hours.')}
-          </p>
-        </div>
+        <p className='text-muted-foreground text-xs'>
+          {t('Based on request results from the last 24 hours.')}
+        </p>
         <div className='flex flex-wrap items-center gap-2'>
           <Input
             type='search'

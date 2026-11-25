@@ -102,6 +102,10 @@ export function SidebarModulesSection({
         title: t('Dashboard'),
         description: t('Aggregated usage metrics and trend charts.'),
       },
+      availability: {
+        title: t('Model availability'),
+        description: t('Hourly success rate of each group and model.'),
+      },
       token: {
         title: t('Token management'),
         description: t('Create, revoke, and audit API tokens.'),

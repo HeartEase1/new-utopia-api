@@ -88,6 +88,11 @@ export function SidebarModulesCard() {
           description: t('System data statistics'),
         },
         {
+          key: 'availability',
+          title: t('Model availability'),
+          description: t('Hourly success rate of each group and model.'),
+        },
+        {
           key: 'token',
           title: t('Token Management'),
           description: t('API token management'),

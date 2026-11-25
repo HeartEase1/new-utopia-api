@@ -97,10 +97,10 @@ it('lets mobile console users open Model Square directly and closes the sidebar'
 it('lets mobile users open Model availability directly and closes the sidebar', async () => {
   const router = await renderSidebar()
   const link = screen.getByRole('link', { name: 'Model availability' })
-  expect(link).toHaveAttribute('href', '/dashboard/availability')
+  expect(link).toHaveAttribute('href', '/model-availability')
   await userEvent.click(link)
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe('/dashboard/availability')
+    expect(router.state.location.pathname).toBe('/model-availability')
   )
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

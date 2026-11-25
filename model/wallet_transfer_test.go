@@ -1,0 +1,486 @@
+package model
+
+import (
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/pquerna/otp/totp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+func prepareWalletTransferTest(t *testing.T) {
+	t.Helper()
+	require.NoError(t, DB.AutoMigrate(&WalletSecurity{}, &WalletTransferDailyConfig{}, &WalletTransferAttempt{}, &WalletTransfer{}))
+	truncateTables(t)
+	for _, table := range []any{&WalletSecurity{}, &WalletTransferDailyConfig{}, &WalletTransferAttempt{}, &WalletTransfer{}} {
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(table).Error)
+	}
+	oldRedisEnabled := common.RedisEnabled
+	oldBatchUpdateEnabled := common.BatchUpdateEnabled
+	common.RedisEnabled = false
+	common.BatchUpdateEnabled = false
+	t.Cleanup(func() {
+		common.RedisEnabled = oldRedisEnabled
+		common.BatchUpdateEnabled = oldBatchUpdateEnabled
+	})
+}
+
+func createWalletTransferTestAccount(t *testing.T, username string, quota int, withPaymentPassword bool) (User, AuthSessionIdentity, string, string) {
+	t.Helper()
+	loginPassword := "correct horse battery staple"
+	loginHash, err := common.Password2Hash(loginPassword)
+	require.NoError(t, err)
+	user := User{
+		Username: username, Password: loginHash, Status: common.UserStatusEnabled,
+		Role: common.RoleCommonUser, Group: "default", AuthVersion: 1, Quota: quota,
+		AffCode: "aff-" + common.GetRandomString(12), Email: username + "@example.com",
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	session := newTestUserSession("wallet-transfer-"+username, user.Id, time.Now().Unix())
+	require.NoError(t, CreateUserSession(session))
+	identity := AuthSessionIdentity{UserID: user.Id, SessionID: session.SID, UserAuthVersion: 1, SessionVersion: 1}
+	paymentPassword := "secure payment password"
+	if withPaymentPassword {
+		passwordHash, hashErr := common.Password2Hash(paymentPassword)
+		require.NoError(t, hashErr)
+		require.NoError(t, DB.Create(&WalletSecurity{UserId: user.Id, PasswordHash: passwordHash}).Error)
+	}
+	return user, identity, loginPassword, paymentPassword
+}
+
+func createWalletTransferTestQuote(t *testing.T, identity AuthSessionIdentity, recipientId int, amount int64, feePercent float64) *WalletTransferQuoteResult {
+	t.Helper()
+	result, err := CreateWalletTransferQuote(identity, recipientId, amount, feePercent, 1_000, 100, "USD", "$ ")
+	require.NoError(t, err)
+	return result
+}
+
+func TestWalletTransferMovesBalanceOnceAndRecordsRoundedFee(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "transfer-sender", 100, true)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "transfer-recipient", 10, false)
+	quote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 1.01)
+	assert.Equal(t, int64(1), quote.Quote.Fee, "the fee rounds up to the next quota unit")
+	assert.Equal(t, int64(9), quote.Quote.Received)
+
+	transfer, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), transfer.Amount)
+	assert.Equal(t, int64(1), transfer.Fee)
+	assert.Equal(t, int64(9), transfer.Received)
+	assert.Equal(t, 90, getUserQuotaFromDB(t, sender.Id))
+	assert.Equal(t, 19, getUserQuotaFromDB(t, recipient.Id))
+
+	replayed, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, transfer.Id, replayed.Id)
+	assert.Equal(t, 90, getUserQuotaFromDB(t, sender.Id), "retrying the same quote must not debit twice")
+	assert.Equal(t, 19, getUserQuotaFromDB(t, recipient.Id), "retrying the same quote must not credit twice")
+	var transferCount int64
+	require.NoError(t, DB.Model(&WalletTransfer{}).Count(&transferCount).Error)
+	assert.EqualValues(t, 1, transferCount)
+}
+
+func TestWalletTransferRequiresFreshTOTPAndCapsFailedSubmissions(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "totp-sender", 100, false)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "totp-recipient", 10, false)
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: "New Utopia", AccountName: sender.Username})
+	require.NoError(t, err)
+	require.NoError(t, DB.Create(&WalletSecurity{UserId: sender.Id, PasswordHash: mustWalletPasswordHash(t, paymentPassword)}).Error)
+	require.NoError(t, DB.Create(&TwoFA{UserId: sender.Id, Secret: key.Secret(), IsEnabled: true}).Error)
+	code, err := totp.GenerateCode(key.Secret(), time.Now())
+	require.NoError(t, err)
+	firstQuote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 0)
+	_, err = ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: firstQuote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword, TwoFACode: code,
+	})
+	require.NoError(t, err)
+	secondQuote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 0)
+	_, err = ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: secondQuote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword, TwoFACode: code,
+	})
+	assert.ErrorIs(t, err, ErrWalletTransferTwoFAReplay)
+	assert.Equal(t, 90, getUserQuotaFromDB(t, sender.Id))
+	assert.Equal(t, 20, getUserQuotaFromDB(t, recipient.Id))
+
+	missingPasswordSender, missingPasswordIdentity, _, _ := createWalletTransferTestAccount(t, "attempt-sender", 100, false)
+	attemptRecipient, _, _, _ := createWalletTransferTestAccount(t, "attempt-recipient", 0, false)
+	for range 10 {
+		quote := createWalletTransferTestQuote(t, missingPasswordIdentity, attemptRecipient.Id, 1, 0)
+		_, err := ConfirmWalletTransfer(missingPasswordIdentity, WalletTransferSubmit{QuoteToken: quote.QuoteToken})
+		assert.ErrorIs(t, err, ErrWalletTransferPasswordRequired)
+	}
+	lastQuote := createWalletTransferTestQuote(t, missingPasswordIdentity, attemptRecipient.Id, 1, 0)
+	_, err = ConfirmWalletTransfer(missingPasswordIdentity, WalletTransferSubmit{QuoteToken: lastQuote.QuoteToken})
+	assert.ErrorIs(t, err, ErrWalletTransferAttemptLimit)
+	var attemptCount int64
+	require.NoError(t, DB.Model(&WalletTransferAttempt{}).Where("user_id = ?", missingPasswordSender.Id).Count(&attemptCount).Error)
+	assert.EqualValues(t, 10, attemptCount)
+}
+
+func TestWalletTransferDailyCapAndTOTPExemption(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "limited-sender", 100, true)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "limited-recipient", 0, false)
+	now := time.Now()
+	require.NoError(t, DB.Create(&WalletTransfer{
+		QuoteFlowId: 700001, SenderId: sender.Id, SenderUsername: sender.Username,
+		RecipientId: recipient.Id, RecipientUsername: recipient.Username,
+		Amount: 990, Received: 990, FeePercent: "0.00", DateKey: walletTransferDateKey(now), CreatedAt: now,
+	}).Error)
+	quote := createWalletTransferTestQuote(t, identity, recipient.Id, 11, 0)
+	_, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
+	})
+	assert.ErrorIs(t, err, ErrWalletTransferDailyLimit)
+	assert.Equal(t, 100, getUserQuotaFromDB(t, sender.Id))
+
+	secureSender, secureIdentity, secureLoginPassword, securePaymentPassword := createWalletTransferTestAccount(t, "secure-sender", 100, true)
+	secureRecipient, _, _, _ := createWalletTransferTestAccount(t, "secure-recipient", 0, false)
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: "New Utopia", AccountName: secureSender.Username})
+	require.NoError(t, err)
+	require.NoError(t, DB.Create(&TwoFA{UserId: secureSender.Id, Secret: key.Secret(), IsEnabled: true}).Error)
+	require.NoError(t, DB.Create(&WalletTransfer{
+		QuoteFlowId: 700002, SenderId: secureSender.Id, SenderUsername: secureSender.Username,
+		RecipientId: secureRecipient.Id, RecipientUsername: secureRecipient.Username,
+		Amount: 1_000, Received: 1_000, FeePercent: "0.00", DateKey: walletTransferDateKey(now), CreatedAt: now,
+	}).Error)
+	code, err := totp.GenerateCode(key.Secret(), now)
+	require.NoError(t, err)
+	secureQuote := createWalletTransferTestQuote(t, secureIdentity, secureRecipient.Id, 10, 0)
+	transfer, err := ConfirmWalletTransfer(secureIdentity, WalletTransferSubmit{
+		QuoteToken: secureQuote.QuoteToken, LoginPassword: secureLoginPassword,
+		PaymentPassword: securePaymentPassword, TwoFACode: code,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), transfer.Received)
+	assert.Equal(t, 90, getUserQuotaFromDB(t, secureSender.Id))
+	assert.Equal(t, 10, getUserQuotaFromDB(t, secureRecipient.Id))
+}
+
+func TestWalletTransferRecipientSearchNeedsCompleteUsernameOrID(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, _, _, _ := createWalletTransferTestAccount(t, "search-sender", 0, false)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "search_target", 0, false)
+	createWalletTransferTestAccount(t, "searchXtarget", 0, false)
+	disabled, _, _, _ := createWalletTransferTestAccount(t, "search-disabled", 0, false)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", disabled.Id).Update("status", common.UserStatusDisabled).Error)
+
+	for keyword, want := range map[string][]any{
+		"search_target": {recipient.Id}, strconv.Itoa(recipient.Id): {recipient.Id}, " search_target ": {recipient.Id},
+		"search": {}, "search_targe": {}, "search%": {}, "search_targe_": {}, "%": {}, "": {},
+		"search-sender": {}, strconv.Itoa(sender.Id): {}, "search-disabled": {},
+	} {
+		found, err := SearchWalletTransferRecipients(sender.Id, keyword)
+		require.NoError(t, err)
+		ids := make([]any, 0, len(found))
+		for _, item := range found {
+			ids = append(ids, item["id"])
+		}
+		assert.Equal(t, want, ids, "keyword %q", keyword)
+	}
+}
+
+func TestWalletTransferDailyLimitIsHundredDisplayUnits(t *testing.T) {
+	for _, tc := range []struct {
+		displayType string
+		rate        float64
+		want        int64
+	}{
+		{"USD", 1, int64(100 * common.QuotaPerUnit)},
+		{"CNY", 8, int64(100 * common.QuotaPerUnit / 8)},
+		// Token display has no currency, so the cap is 100 USD worth of quota.
+		{"TOKENS", 1, int64(100 * common.QuotaPerUnit)},
+	} {
+		got, err := checkedWalletTransferLimit(tc.rate, tc.displayType)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, got, tc.displayType)
+	}
+}
+
+func TestWalletTransferLocksWrongPasswordAndUnlocksAfterTimeout(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, _ := createWalletTransferTestAccount(t, "locked-sender", 100, true)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "locked-recipient", 0, false)
+	// A wrong login password and a wrong payment password fail identically.
+	wrongLoginQuote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 0)
+	_, wrongLoginErr := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: wrongLoginQuote.QuoteToken, LoginPassword: "incorrect password", PaymentPassword: "secure payment password",
+	})
+	assert.ErrorIs(t, wrongLoginErr, ErrWalletTransferPasswordInvalid)
+	// A used review cannot be submitted again.
+	_, replayErr := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: wrongLoginQuote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: "secure payment password",
+	})
+	assert.ErrorIs(t, replayErr, ErrWalletTransferQuoteInvalid)
+	require.NoError(t, DB.Model(&WalletSecurity{}).Where("user_id = ?", sender.Id).Update("failed_attempts", 0).Error)
+	for range common.MaxFailAttempts {
+		quote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 0)
+		_, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+			QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: "incorrect password",
+		})
+		assert.ErrorIs(t, err, ErrWalletTransferPasswordInvalid)
+	}
+	lockedQuote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 0)
+	_, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: lockedQuote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: "incorrect password",
+	})
+	assert.ErrorIs(t, err, ErrWalletTransferPasswordLocked)
+
+	require.NoError(t, DB.Model(&WalletSecurity{}).Where("user_id = ?", sender.Id).Updates(map[string]any{
+		"locked_until": time.Now().Add(-time.Second),
+	}).Error)
+	quote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 0)
+	transfer, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: "secure payment password",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), transfer.Received)
+	assert.Equal(t, 90, getUserQuotaFromDB(t, sender.Id))
+	assert.Equal(t, 10, getUserQuotaFromDB(t, recipient.Id))
+}
+
+func TestAdminWalletTransferFiltersApplyToBothSidesAndDate(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, _, _, _ := createWalletTransferTestAccount(t, "history-sender", 100, false)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "history-recipient", 0, false)
+	createdAt := time.Now()
+	require.NoError(t, DB.Create(&WalletTransfer{
+		QuoteFlowId: 700003, SenderId: sender.Id, SenderUsername: sender.Username,
+		RecipientId: recipient.Id, RecipientUsername: recipient.Username,
+		Amount: 10, Fee: 1, Received: 9, FeePercent: "10.00", DateKey: "2026-01-01", CreatedAt: createdAt,
+	}).Error)
+	_, total, fees, err := SearchWalletTransfers(sender.Id, "", "2026-01-02", 0, 20)
+	require.NoError(t, err)
+	assert.Zero(t, total)
+	assert.Zero(t, fees)
+	records, total, fees, err := SearchWalletTransfers(recipient.Id, sender.Username, "2026-01-01", 0, 20)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total)
+	assert.Equal(t, int64(1), fees)
+	require.Len(t, records, 1)
+	assert.Equal(t, int64(9), records[0].Received)
+}
+
+func TestWalletTransferRejectsInsufficientBalanceAndPrunesOnlyShortLivedState(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "poor-sender", 5, true)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "poor-recipient", 0, false)
+	quote := createWalletTransferTestQuote(t, identity, recipient.Id, 6, 0)
+	_, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
+	})
+	assert.ErrorIs(t, err, ErrWalletTransferInsufficient)
+	assert.Equal(t, 5, getUserQuotaFromDB(t, sender.Id))
+	assert.Equal(t, 0, getUserQuotaFromDB(t, recipient.Id))
+	var transferCount int64
+	require.NoError(t, DB.Model(&WalletTransfer{}).Count(&transferCount).Error)
+	assert.Zero(t, transferCount)
+
+	now := time.Now()
+	oldDay := walletTransferDateKey(now.AddDate(0, 0, -WalletTransferStateRetentionDays-1))
+	currentDay := walletTransferDateKey(now)
+	require.NoError(t, DB.Create(&WalletTransferAttempt{QuoteFlowId: 800001, UserId: sender.Id, DateKey: oldDay, Quota: 1, SubmittedAt: now}).Error)
+	require.NoError(t, DB.Create(&WalletTransferAttempt{QuoteFlowId: 800002, UserId: sender.Id, DateKey: currentDay, Quota: 1, SubmittedAt: now}).Error)
+	require.NoError(t, DB.Create(&WalletTransferDailyConfig{UserId: sender.Id, DateKey: oldDay, DisplayType: "USD", DisplaySymbol: "$", DailyLimitQuota: 1}).Error)
+	require.NoError(t, DB.Create(&WalletTransfer{QuoteFlowId: 900001, SenderId: sender.Id, SenderUsername: sender.Username, RecipientId: recipient.Id, RecipientUsername: recipient.Username, Amount: 1, Received: 1, FeePercent: "0.00", DateKey: oldDay, CreatedAt: now}).Error)
+	require.NoError(t, DeleteExpiredWalletTransferState(now))
+	var oldAttempts, recentAttempts, oldConfigs, recentConfigs, retainedTransfers int64
+	require.NoError(t, DB.Model(&WalletTransferAttempt{}).Where("date_key = ?", oldDay).Count(&oldAttempts).Error)
+	require.NoError(t, DB.Model(&WalletTransferAttempt{}).Where("date_key = ?", currentDay).Count(&recentAttempts).Error)
+	require.NoError(t, DB.Model(&WalletTransferDailyConfig{}).Where("date_key = ?", oldDay).Count(&oldConfigs).Error)
+	require.NoError(t, DB.Model(&WalletTransferDailyConfig{}).Where("date_key = ?", currentDay).Count(&recentConfigs).Error)
+	require.NoError(t, DB.Model(&WalletTransfer{}).Where("date_key = ?", oldDay).Count(&retainedTransfers).Error)
+	assert.Zero(t, oldAttempts)
+	assert.EqualValues(t, 2, recentAttempts)
+	assert.Zero(t, oldConfigs)
+	assert.EqualValues(t, 1, recentConfigs)
+	assert.EqualValues(t, 1, retainedTransfers, "reconciliation history is permanent")
+}
+
+func TestWalletTransferPaymentPasswordFlowRequiresEmailCodeAndIsSingleUse(t *testing.T) {
+	prepareWalletTransferTest(t)
+	_, identity, loginPassword, _ := createWalletTransferTestAccount(t, "password-flow-setter", 0, false)
+	require.NoError(t, DB.AutoMigrate(&AuthFlow{}, &User{}, &UserSession{}))
+	codeHash := mustWalletPasswordHash(t, "482910")
+	token, expiresAt, email, err := CreateWalletTransferPasswordFlow(identity, "set", codeHash)
+	require.NoError(t, err)
+	assert.True(t, expiresAt.After(time.Now()))
+	assert.Equal(t, "password-flow-setter@example.com", email)
+
+	newPassword := "separate wallet password"
+	newPasswordHash, err := common.HashAccountPassword(newPassword)
+	require.NoError(t, err)
+	err = CompleteWalletTransferPasswordFlow(identity, token, "invalid-code", "", "", "", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletPasswordCodeInvalid)
+
+	rotatedCodeHash := mustWalletPasswordHash(t, "119385")
+	rotatedToken, _, _, err := CreateWalletTransferPasswordFlow(identity, "set", rotatedCodeHash)
+	require.NoError(t, err)
+	err = CompleteWalletTransferPasswordFlow(identity, token, "482910", "", "", "", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletPasswordFlowInvalid, "a newer code invalidates the previous flow")
+
+	// A password from the common-password list is refused in any letter case.
+	err = CompleteWalletTransferPasswordFlow(identity, rotatedToken, "119385", "", loginPassword, "", "Password1", newPasswordHash)
+	assert.ErrorIs(t, err, common.ErrPasswordTooCommon)
+	// The email code alone is not enough: the login password is required too.
+	err = CompleteWalletTransferPasswordFlow(identity, rotatedToken, "119385", "", "", "", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletTransferLoginInvalid)
+	var created int64
+	require.NoError(t, DB.Model(&WalletSecurity{}).Where("user_id = ?", identity.UserID).Count(&created).Error)
+	assert.Zero(t, created)
+
+	err = CompleteWalletTransferPasswordFlow(identity, rotatedToken, "119385", "", loginPassword, "", newPassword, newPasswordHash)
+	require.NoError(t, err)
+	var security WalletSecurity
+	require.NoError(t, DB.Where("user_id = ?", identity.UserID).First(&security).Error)
+	assert.True(t, common.ValidatePasswordAndHash(newPassword, security.PasswordHash))
+
+	err = CompleteWalletTransferPasswordFlow(identity, rotatedToken, "119385", "", loginPassword, "", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletPasswordFlowInvalid)
+}
+
+func TestWalletTransferPaymentPasswordMustDifferFromLoginAndCurrentPassword(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, currentPaymentPassword := createWalletTransferTestAccount(t, "password-separation", 0, true)
+	require.NoError(t, DB.AutoMigrate(&AuthFlow{}, &User{}, &UserSession{}))
+	codeHash := mustWalletPasswordHash(t, "513792")
+	token, _, _, err := CreateWalletTransferPasswordFlow(identity, "change", codeHash)
+	require.NoError(t, err)
+
+	loginPasswordHash, err := common.HashAccountPassword(loginPassword)
+	require.NoError(t, err)
+	// Without the current payment password, the answer never reveals whether the
+	// proposed password equals the login or the current payment password.
+	for _, guess := range []string{loginPassword, currentPaymentPassword} {
+		err = CompleteWalletTransferPasswordFlow(identity, token, "513792", "not the current password", "", "", guess, loginPasswordHash)
+		assert.ErrorIs(t, err, ErrWalletPasswordCurrentInvalid)
+	}
+	err = CompleteWalletTransferPasswordFlow(identity, token, "513792", currentPaymentPassword, "", "", loginPassword, loginPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletPasswordSameAsLogin)
+
+	currentPaymentHash, err := common.HashAccountPassword(currentPaymentPassword)
+	require.NoError(t, err)
+	err = CompleteWalletTransferPasswordFlow(identity, token, "513792", currentPaymentPassword, "", "", currentPaymentPassword, currentPaymentHash)
+	assert.ErrorIs(t, err, ErrWalletPasswordUnchanged)
+
+	newPassword := "another wallet passphrase"
+	newPasswordHash, err := common.HashAccountPassword(newPassword)
+	require.NoError(t, err)
+	err = CompleteWalletTransferPasswordFlow(identity, token, "513792", currentPaymentPassword, "", "", newPassword, newPasswordHash)
+	require.NoError(t, err)
+	var security WalletSecurity
+	require.NoError(t, DB.Where("user_id = ?", sender.Id).First(&security).Error)
+	assert.True(t, common.ValidatePasswordAndHash(newPassword, security.PasswordHash))
+}
+
+func TestWalletTransferPasswordChangeLockCannotBeBypassedWithNewEmailFlow(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, _, currentPassword := createWalletTransferTestAccount(t, "password-change-lock", 0, true)
+	require.NoError(t, DB.AutoMigrate(&AuthFlow{}, &User{}, &UserSession{}))
+	newPassword := "new payment password after lock"
+	newPasswordHash, err := common.HashAccountPassword(newPassword)
+	require.NoError(t, err)
+
+	for attempt := range common.MaxFailAttempts {
+		codeHash := mustWalletPasswordHash(t, "482910")
+		token, _, _, flowErr := CreateWalletTransferPasswordFlow(identity, "change", codeHash)
+		require.NoError(t, flowErr)
+		err = CompleteWalletTransferPasswordFlow(identity, token, "482910", "wrong current password", "", "", newPassword, newPasswordHash)
+		assert.ErrorIs(t, err, ErrWalletPasswordCurrentInvalid, "each flow reports the failed current password")
+		if attempt+1 == common.MaxFailAttempts {
+			var security WalletSecurity
+			require.NoError(t, DB.Where("user_id = ?", sender.Id).First(&security).Error)
+			assert.NotNil(t, security.LockedUntil)
+		}
+	}
+
+	codeHash := mustWalletPasswordHash(t, "713064")
+	token, _, _, err := CreateWalletTransferPasswordFlow(identity, "change", codeHash)
+	require.NoError(t, err)
+	err = CompleteWalletTransferPasswordFlow(identity, token, "713064", currentPassword, "", "", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletTransferPasswordLocked, "a fresh email flow must not bypass the account lock")
+
+	var security WalletSecurity
+	require.NoError(t, DB.Where("user_id = ?", sender.Id).First(&security).Error)
+	assert.True(t, common.ValidatePasswordAndHash(currentPassword, security.PasswordHash))
+	assert.False(t, common.ValidatePasswordAndHash(newPassword, security.PasswordHash))
+}
+
+func TestWalletTransferPasswordCodeExpiresAndLocksAfterRepeatedFailures(t *testing.T) {
+	prepareWalletTransferTest(t)
+	_, identity, _, _ := createWalletTransferTestAccount(t, "password-code-guard", 0, false)
+	require.NoError(t, DB.AutoMigrate(&AuthFlow{}, &User{}, &UserSession{}))
+	codeHash := mustWalletPasswordHash(t, "628194")
+	token, _, _, err := CreateWalletTransferPasswordFlow(identity, "set", codeHash)
+	require.NoError(t, err)
+	newPassword := "a different secure password"
+
+	for attempt := range WalletPasswordMaxAttempts {
+		err = CompleteWalletTransferPasswordFlow(identity, token, "invalid-code", "", "", "", newPassword, "unused-hash")
+		if attempt+1 == WalletPasswordMaxAttempts {
+			assert.ErrorIs(t, err, ErrWalletPasswordFlowLocked)
+			continue
+		}
+		assert.ErrorIs(t, err, ErrWalletPasswordCodeInvalid)
+	}
+	err = CompleteWalletTransferPasswordFlow(identity, token, "628194", "", "", "", newPassword, "unused-hash")
+	assert.ErrorIs(t, err, ErrWalletPasswordFlowLocked, "a locked flow cannot be recovered by supplying the right code")
+
+	expiredToken, _, _, err := CreateWalletTransferPasswordFlow(identity, "set", codeHash)
+	require.NoError(t, err)
+	flowHash := authFlowTokenHash(expiredToken)
+	require.NoError(t, DB.Model(&AuthFlow{}).Where("token_hash = ?", flowHash).Update("expires_at", time.Now().Add(-time.Minute)).Error)
+	err = CompleteWalletTransferPasswordFlow(identity, expiredToken, "628194", "", "", "", newPassword, "unused-hash")
+	assert.ErrorIs(t, err, ErrWalletPasswordFlowInvalid)
+}
+
+func TestWalletTransferPaymentPasswordResetRequiresLoginPasswordAndFreshTwoFA(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, oldPaymentPassword := createWalletTransferTestAccount(t, "password-flow-resetter", 0, true)
+	require.NoError(t, DB.AutoMigrate(&AuthFlow{}, &User{}, &UserSession{}, &TwoFA{}, &TwoFABackupCode{}))
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: "New Utopia", AccountName: sender.Username})
+	require.NoError(t, err)
+	require.NoError(t, DB.Create(&TwoFA{UserId: sender.Id, Secret: key.Secret(), IsEnabled: true}).Error)
+
+	codeHash := mustWalletPasswordHash(t, "734205")
+	token, _, _, err := CreateWalletTransferPasswordFlow(identity, "reset", codeHash)
+	require.NoError(t, err)
+	newPassword := "reset wallet password safely"
+	newPasswordHash, err := common.HashAccountPassword(newPassword)
+	require.NoError(t, err)
+	twoFACode, err := totp.GenerateCode(key.Secret(), time.Now())
+	require.NoError(t, err)
+
+	err = CompleteWalletTransferPasswordFlow(identity, token, "734205", "", "wrong login password", twoFACode, newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletTransferLoginInvalid)
+
+	err = CompleteWalletTransferPasswordFlow(identity, token, "734205", "", loginPassword, "invalid-code", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletTransferTwoFAInvalid)
+
+	err = CompleteWalletTransferPasswordFlow(identity, token, "734205", "", loginPassword, twoFACode, newPassword, newPasswordHash)
+	require.NoError(t, err)
+	var security WalletSecurity
+	require.NoError(t, DB.Where("user_id = ?", sender.Id).First(&security).Error)
+	assert.True(t, common.ValidatePasswordAndHash(newPassword, security.PasswordHash))
+	assert.False(t, common.ValidatePasswordAndHash(oldPaymentPassword, security.PasswordHash))
+
+	err = CompleteWalletTransferPasswordFlow(identity, token, "734205", "", loginPassword, twoFACode, newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletPasswordFlowInvalid)
+}
+
+func mustWalletPasswordHash(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := common.Password2Hash(password)
+	require.NoError(t, err)
+	return hash
+}

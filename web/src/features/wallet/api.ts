@@ -40,6 +40,11 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  WalletTransferRecipient,
+  WalletTransferStatus,
+  WalletTransferQuoteResult,
+  WalletTransferRecord,
+  WalletTransferPasswordFlow,
 } from './types'
 
 // ============================================================================
@@ -61,6 +66,109 @@ export async function requestAlipayF2F(
     throw createServerError(res.data, 'Payment request failed')
   }
   return res.data.data
+}
+
+function requireWalletSuccess<T>(
+  response: ApiResponse<T>,
+  fallback: string
+): T {
+  if (!response.success || response.data === undefined) {
+    throw createServerError(response, fallback)
+  }
+  return response.data
+}
+
+export async function getWalletTransferStatus(): Promise<WalletTransferStatus> {
+  const res = await api.get('/api/user/wallet-transfer/status')
+  return requireWalletSuccess(res.data, 'Failed to load transfer settings')
+}
+
+export async function searchWalletTransferRecipients(
+  keyword: string
+): Promise<WalletTransferRecipient[]> {
+  const res = await api.get('/api/user/wallet-transfer/recipients', {
+    params: { keyword },
+  })
+  return requireWalletSuccess(res.data, 'Failed to search users')
+}
+
+export async function createWalletTransferQuote(
+  recipientId: number,
+  amount: number
+): Promise<WalletTransferQuoteResult> {
+  const res = await api.post('/api/user/wallet-transfer/quote', {
+    recipient_id: recipientId,
+    amount,
+  })
+  return requireWalletSuccess(res.data, 'Failed to prepare transfer')
+}
+
+export async function confirmWalletTransfer(request: {
+  quote_token: string
+  login_password: string
+  payment_password: string
+  two_fa_code?: string
+}): Promise<WalletTransferRecord> {
+  const res = await api.post('/api/user/wallet-transfer/confirm', request, {
+    singleUseAuthorization: true,
+  })
+  return requireWalletSuccess(res.data, 'Transfer failed')
+}
+
+export async function startWalletTransferPasswordFlow(
+  intent: 'set' | 'change' | 'reset'
+): Promise<WalletTransferPasswordFlow> {
+  const res = await api.post('/api/user/wallet-transfer/password/start', {
+    intent,
+  })
+  return requireWalletSuccess(res.data, 'Failed to send email verification')
+}
+
+export async function completeWalletTransferPasswordFlow(request: {
+  flow_token: string
+  code: string
+  current_password?: string
+  login_password?: string
+  two_fa_code?: string
+  new_password: string
+}): Promise<void> {
+  const res = await api.post(
+    '/api/user/wallet-transfer/password/complete',
+    request,
+    { singleUseAuthorization: true }
+  )
+  requireWalletSuccess(res.data, 'Failed to save payment password')
+}
+
+export async function getWalletTransferHistory(
+  page: number,
+  pageSize: number
+): Promise<{ items: WalletTransferRecord[]; total: number }> {
+  const params = new URLSearchParams({
+    p: String(page),
+    page_size: String(pageSize),
+  })
+  const res = await api.get(`/api/user/wallet-transfer/history?${params}`)
+  return requireWalletSuccess(res.data, 'Failed to load transfer history')
+}
+
+export async function getAdminWalletTransfers(
+  page: number,
+  pageSize: number,
+  keyword: string,
+  date: string
+): Promise<{
+  page: { items: WalletTransferRecord[]; total: number }
+  total_fee: number
+}> {
+  const params = new URLSearchParams({
+    p: String(page),
+    page_size: String(pageSize),
+  })
+  if (keyword) params.set('keyword', keyword)
+  if (date) params.set('date', date)
+  const res = await api.get(`/api/user/wallet-transfers?${params}`)
+  return requireWalletSuccess(res.data, 'Failed to load transfer records')
 }
 
 export async function queryAlipayF2FOrder(
