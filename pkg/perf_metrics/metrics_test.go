@@ -313,12 +313,32 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			assert.NotContains(t, string(encoded), "request_count")
 			assert.NotContains(t, string(encoded), "success_count")
 
-			flushCompletedBuckets()
-			flushCompletedBuckets()
+			Flush()
+			Flush()
 			after, err := Query(QueryParams{Model: "test-model", Hours: 24, AllowedGroups: groups})
 			require.NoError(t, err)
 			assert.Equal(t, before.Summary, after.Summary)
 			assert.Equal(t, before.Series, after.Series)
+
+			// The running hour is written as well, so a restart loses at most one
+			// flush interval and other nodes see it; it is still counted once.
+			current := bucketStart(time.Now().Unix())
+			running := &atomicBucket{}
+			running.add(Sample{Success: true, LatencyMs: 100})
+			hotBuckets.Store(bucketKey{model: "running-model", group: "a", bucketTs: current}, running)
+			Flush()
+			runningRows, err := model.GetPerfMetrics("running-model", "a", current, current)
+			require.NoError(t, err)
+			require.Len(t, runningRows, 1)
+			assert.Equal(t, int64(1), runningRows[0].RequestCount)
+			withRunning, err := QueryAvailability(groups)
+			require.NoError(t, err)
+			runningModel, found := lo.Find(withRunning.Models, func(m AvailabilityModel) bool { return m.ModelName == "running-model" })
+			require.True(t, found)
+			assert.Equal(t, int64(1), runningModel.RequestCount)
+			// Leave the later totals in this test unaffected.
+			hotBuckets.Delete(bucketKey{model: "running-model", group: "a", bucketTs: current})
+			require.NoError(t, db.Where("model_name = ?", "running-model").Delete(&model.PerfMetric{}).Error)
 
 			RecordRelayResult(context.Background(), &relaycommon.RelayInfo{OriginModelName: "test-model", UsingGroup: "a", StartTime: now}, types.InitOpenAIError("context_length_exceeded", 400))
 			after, err = Query(QueryParams{Model: "test-model", Hours: 24, AllowedGroups: groups})
@@ -392,7 +412,7 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 				denied, err := QuerySummaryAll(24, []string{}, "history-model", "history-hidden")
 				require.NoError(t, err)
 				assert.Empty(t, denied.RecentSuccessSeries)
-				flushCompletedBuckets()
+				Flush()
 				persisted, err := QuerySummaryAll(24, groups, "history-model", "history-hot")
 				require.NoError(t, err)
 				assert.Equal(t, points, persisted.RecentSuccessSeries["history-model"])

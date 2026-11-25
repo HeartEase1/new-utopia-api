@@ -62,6 +62,9 @@ interface TransferConfirmDialogProps {
   availableQuota: number
   twoFAEnabled: boolean
   submitting: boolean
+  /** The last submission got no answer; it is checked with the same review. */
+  outcomeUnknown: boolean
+  onCheckResult: () => void
   onCancel: () => void
   onSubmit: (credentials: TransferCredentials) => void
 }
@@ -104,7 +107,25 @@ export function TransferConfirmDialog(props: TransferConfirmDialogProps) {
       </Button>
     </div>
   )
-  if (verifying) {
+  if (props.outcomeUnknown) {
+    footer = (
+      <div className='grid w-full grid-cols-2 gap-2'>
+        <Button
+          variant='outline'
+          disabled={props.submitting}
+          onClick={props.onCancel}
+        >
+          {t('Check history later')}
+        </Button>
+        <Button disabled={props.submitting} onClick={props.onCheckResult}>
+          {props.submitting ? (
+            <Loader2 className='mr-2 size-4 animate-spin' />
+          ) : null}
+          {t('Check result')}
+        </Button>
+      </div>
+    )
+  } else if (verifying) {
     footer = (
       <div className='grid w-full grid-cols-2 gap-2'>
         <Button
@@ -128,20 +149,26 @@ export function TransferConfirmDialog(props: TransferConfirmDialogProps) {
     )
   }
 
+  let title = t('Check the transfer details')
+  let description = t('Make sure the recipient and the amount are correct.')
+  if (props.outcomeUnknown) {
+    title = t('Transfer result not confirmed')
+    description = t(
+      'The connection dropped before the server answered, so this transfer may or may not have gone through.'
+    )
+  } else if (verifying) {
+    title = t('Verify to transfer')
+    description = t('Enter your passwords to authorize this transfer.')
+  }
+
   return (
     <Dialog
       open={quote !== null}
       onOpenChange={(open) => {
         if (!open && !props.submitting) props.onCancel()
       }}
-      title={
-        verifying ? t('Verify to transfer') : t('Check the transfer details')
-      }
-      description={
-        verifying
-          ? t('Enter your passwords to authorize this transfer.')
-          : t('Make sure the recipient and the amount are correct.')
-      }
+      title={title}
+      description={description}
       contentClassName='max-sm:w-[calc(100vw-1rem)] sm:max-w-md'
       footer={footer}
     >
@@ -179,7 +206,18 @@ export function TransferConfirmDialog(props: TransferConfirmDialogProps) {
             )}
           </dl>
 
-          {verifying ? (
+          {props.outcomeUnknown ? (
+            <Alert>
+              <AlertTriangle />
+              <AlertTitle>{t('Do not start a new transfer')}</AlertTitle>
+              <AlertDescription>
+                {t(
+                  'Check result verifies this same transfer: if it went through you see the result, otherwise it is carried out now. The balance is never moved twice.'
+                )}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {!props.outcomeUnknown && verifying ? (
             <form
               id={`${ids}-form`}
               className='space-y-3'
@@ -238,7 +276,8 @@ export function TransferConfirmDialog(props: TransferConfirmDialogProps) {
                 )}
               </p>
             </form>
-          ) : (
+          ) : null}
+          {!props.outcomeUnknown && !verifying ? (
             <Alert variant='destructive'>
               <AlertTriangle />
               <AlertTitle>{t('A transfer cannot be undone')}</AlertTitle>
@@ -248,7 +287,7 @@ export function TransferConfirmDialog(props: TransferConfirmDialogProps) {
                 )}
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
         </div>
       ) : null}
     </Dialog>

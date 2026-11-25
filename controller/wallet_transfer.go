@@ -229,11 +229,16 @@ func writeWalletTransferError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, model.ErrWalletTransferInvalid), errors.Is(err, model.ErrWalletTransferBelowMinimum), errors.Is(err, model.ErrWalletTransferQuoteInvalid), errors.Is(err, model.ErrWalletPasswordFlowInvalid), errors.Is(err, model.ErrWalletPasswordCodeInvalid), errors.Is(err, model.ErrWalletPasswordSameAsLogin), errors.Is(err, model.ErrWalletPasswordUnchanged), errors.Is(err, common.ErrAccountPasswordLength), errors.Is(err, common.ErrPasswordTooCommon), errors.Is(err, common.ErrPasswordLegacyLimit):
 		common.ApiErrorStatus(c, http.StatusBadRequest, err)
+	case errors.Is(err, model.ErrWalletTransferOutcomeUnknown):
+		// 5xx on purpose: the client keeps the review and checks with it again.
+		common.ApiErrorStatus(c, http.StatusServiceUnavailable, err)
 	case errors.Is(err, service.ErrWalletTransferPasswordEmailDelivery):
 		common.ApiErrorStatus(c, http.StatusBadGateway, err)
 	case errors.Is(err, model.ErrWalletTransferRecipientInvalid):
 		common.ApiErrorStatus(c, http.StatusBadRequest, err)
-	case errors.Is(err, model.ErrWalletTransferInsufficient), errors.Is(err, model.ErrWalletQuotaLimitExceeded):
+	// 409, not 5xx: the refusal is final and nothing moved, so the client must
+	// not treat it as an unknown outcome.
+	case errors.Is(err, model.ErrWalletTransferInsufficient), errors.Is(err, model.ErrWalletTransferBalanceUnverified), errors.Is(err, model.ErrWalletTransferPreviousPending), errors.Is(err, model.ErrWalletQuotaLimitExceeded):
 		common.ApiErrorStatus(c, http.StatusConflict, err)
 	case errors.Is(err, model.ErrWalletTransferDailyLimit), errors.Is(err, model.ErrWalletTransferAttemptLimit):
 		common.ApiErrorStatus(c, http.StatusTooManyRequests, err)

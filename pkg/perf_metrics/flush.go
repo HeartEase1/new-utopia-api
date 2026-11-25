@@ -22,18 +22,17 @@ func flushLoop() {
 		if !setting.Enabled {
 			continue
 		}
-		flushCompletedBuckets()
+		Flush()
 	}
 }
 
-func flushCompletedBuckets() {
-	currentBucket := bucketStart(time.Now().Unix())
+// Flush adds every in-memory bucket to the database, the running one
+// included, and keeps it for further samples. Upserts are additive and each
+// flush moves only what was drained, so nothing is counted twice; a restart
+// loses at most one flush interval, and other nodes see the running hour.
+func Flush() {
 	hotBuckets.Range(func(key, value any) bool {
 		k := key.(bucketKey)
-		if k.bucketTs >= currentBucket {
-			return true
-		}
-
 		bucket := value.(*atomicBucket)
 		drained := bucket.drain()
 		if drained.requestCount == 0 {

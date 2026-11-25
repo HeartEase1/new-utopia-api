@@ -13,18 +13,42 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func TestMain(m *testing.M) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		panic("failed to open test db: " + err.Error())
+	var db *gorm.DB
+	var err error
+	databaseType := common.DatabaseTypeSQLite
+	// TEST_MODEL_POSTGRES_DSN runs the package against a dedicated, empty
+	// PostgreSQL database instead of in-memory SQLite. Tests create and delete
+	// rows freely, so a database that already holds users is refused.
+	if dsn := os.Getenv("TEST_MODEL_POSTGRES_DSN"); dsn != "" {
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		if err != nil {
+			panic("failed to open test postgres db: " + err.Error())
+		}
+		var users int64
+		if db.Migrator().HasTable("users") {
+			if err := db.Table("users").Count(&users).Error; err != nil {
+				panic("failed to inspect test postgres db: " + err.Error())
+			}
+		}
+		if users > 0 {
+			panic("TEST_MODEL_POSTGRES_DSN must point to an empty, dedicated test database: it already has users")
+		}
+		databaseType = common.DatabaseTypePostgreSQL
+	} else {
+		db, err = gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+		if err != nil {
+			panic("failed to open test db: " + err.Error())
+		}
 	}
 	DB = db
 	LOG_DB = db
 
-	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.SetDatabaseTypes(databaseType, databaseType)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true

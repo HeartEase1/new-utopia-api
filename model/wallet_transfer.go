@@ -9,11 +9,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"github.com/shopspring/decimal"
@@ -33,30 +35,33 @@ const (
 )
 
 var (
-	ErrWalletTransferInvalid          = errors.New("Wallet transfer request is invalid.")
-	ErrWalletTransferRecipientInvalid = errors.New("The recipient is unavailable.")
-	ErrWalletTransferInsufficient     = errors.New("Insufficient wallet balance.")
-	ErrWalletTransferBelowMinimum     = errors.New("The transfer amount is below the minimum of 1.")
-	ErrWalletTransferDailyLimit       = errors.New("The daily wallet transfer limit has been reached.")
-	ErrWalletTransferAttemptLimit     = errors.New("The daily wallet transfer attempt limit has been reached.")
-	ErrWalletTransferPasswordRequired = errors.New("Set a payment password before transferring balance.")
-	ErrWalletTransferLoginRequired    = errors.New("Set a login password before transferring balance.")
-	ErrWalletTransferPasswordInvalid  = errors.New("The login password or payment password is incorrect.")
-	ErrWalletTransferLoginInvalid     = errors.New("The login password is incorrect.")
-	ErrWalletTransferQuoteInvalid     = errors.New("This transfer review has expired or was already used. Review the transfer again.")
-	ErrWalletTransferPasswordLocked   = errors.New("Payment password verification is temporarily locked.")
-	ErrWalletTransferTwoFAInvalid     = errors.New("The two-factor authentication code is incorrect.")
-	ErrWalletTransferTwoFALocked      = errors.New("Two-factor authentication is temporarily locked.")
-	ErrWalletTransferTwoFAReplay      = errors.New("This two-factor authentication code has already been used.")
-	ErrWalletPasswordFlowInvalid      = errors.New("The email verification flow is invalid or expired.")
-	ErrWalletPasswordCodeInvalid      = errors.New("The email verification code is incorrect.")
-	ErrWalletPasswordFlowLocked       = errors.New("Too many incorrect verification codes. Start again.")
-	ErrWalletPasswordCurrentInvalid   = errors.New("The current payment password is incorrect.")
-	ErrWalletPasswordSameAsLogin      = errors.New("The payment password must differ from the login password.")
-	ErrWalletPasswordUnchanged        = errors.New("The new payment password must differ from the current payment password.")
-	ErrWalletPasswordStateChanged     = errors.New("Payment password settings changed. Start again.")
-	ErrWalletTransferPasswordState    = ErrWalletPasswordStateChanged
-	ErrEmailBindingRequired           = errors.New("Bind an email address before managing the payment password.")
+	ErrWalletTransferInvalid           = errors.New("Wallet transfer request is invalid.")
+	ErrWalletTransferRecipientInvalid  = errors.New("The recipient is unavailable.")
+	ErrWalletTransferInsufficient      = errors.New("Insufficient wallet balance.")
+	ErrWalletTransferBalanceUnverified = errors.New("Your balance cannot be confirmed right now. Try again later.")
+	ErrWalletTransferOutcomeUnknown    = errors.New("The transfer result could not be confirmed yet. Check the result before trying again.")
+	ErrWalletTransferPreviousPending   = errors.New("A previous transfer is still being confirmed. Try again in a moment.")
+	ErrWalletTransferBelowMinimum      = errors.New("The transfer amount is below the minimum of 1.")
+	ErrWalletTransferDailyLimit        = errors.New("The daily wallet transfer limit has been reached.")
+	ErrWalletTransferAttemptLimit      = errors.New("The daily wallet transfer attempt limit has been reached.")
+	ErrWalletTransferPasswordRequired  = errors.New("Set a payment password before transferring balance.")
+	ErrWalletTransferLoginRequired     = errors.New("Set a login password before transferring balance.")
+	ErrWalletTransferPasswordInvalid   = errors.New("The login password or payment password is incorrect.")
+	ErrWalletTransferLoginInvalid      = errors.New("The login password is incorrect.")
+	ErrWalletTransferQuoteInvalid      = errors.New("This transfer review has expired or was already used. Review the transfer again.")
+	ErrWalletTransferPasswordLocked    = errors.New("Payment password verification is temporarily locked.")
+	ErrWalletTransferTwoFAInvalid      = errors.New("The two-factor authentication code is incorrect.")
+	ErrWalletTransferTwoFALocked       = errors.New("Two-factor authentication is temporarily locked.")
+	ErrWalletTransferTwoFAReplay       = errors.New("This two-factor authentication code has already been used.")
+	ErrWalletPasswordFlowInvalid       = errors.New("The email verification flow is invalid or expired.")
+	ErrWalletPasswordCodeInvalid       = errors.New("The email verification code is incorrect.")
+	ErrWalletPasswordFlowLocked        = errors.New("Too many incorrect verification codes. Start again.")
+	ErrWalletPasswordCurrentInvalid    = errors.New("The current payment password is incorrect.")
+	ErrWalletPasswordSameAsLogin       = errors.New("The payment password must differ from the login password.")
+	ErrWalletPasswordUnchanged         = errors.New("The new payment password must differ from the current payment password.")
+	ErrWalletPasswordStateChanged      = errors.New("Payment password settings changed. Start again.")
+	ErrWalletTransferPasswordState     = ErrWalletPasswordStateChanged
+	ErrEmailBindingRequired            = errors.New("Bind an email address before managing the payment password.")
 )
 
 type WalletSecurity struct {
@@ -250,7 +255,7 @@ func GetWalletTransferDailyLimitSnapshot() (*WalletTransferDailyLimitSnapshot, e
 }
 
 func walletTransferFee(amount int64, feePercent float64) (int64, string, error) {
-	if amount <= 0 || amount > common.MaxQuota || !operation_setting.ValidateWalletTransferFeePercent(feePercent) {
+	if amount <= 0 || amount > common.MaxWalletQuota || !operation_setting.ValidateWalletTransferFeePercent(feePercent) {
 		return 0, "", ErrWalletTransferInvalid
 	}
 	rate := decimal.NewFromFloat(feePercent)
@@ -263,7 +268,7 @@ func walletTransferFee(amount int64, feePercent float64) (int64, string, error) 
 }
 
 func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, amount int64, feePercent float64, dailyLimitQuota int64, dailyLimitAmount int, displayType, displaySymbol string) (*WalletTransferQuoteResult, error) {
-	if identity.UserID <= 0 || identity.SessionID == "" || recipientId <= 0 || amount <= 0 || amount > common.MaxQuota || dailyLimitQuota <= 0 || dailyLimitQuota > common.MaxQuota || dailyLimitAmount != WalletTransferDailyLimit || len(displayType) > 16 || len(displaySymbol) > 16 {
+	if identity.UserID <= 0 || identity.SessionID == "" || recipientId <= 0 || amount <= 0 || amount > common.MaxWalletQuota || dailyLimitQuota <= 0 || dailyLimitQuota > common.MaxQuota || dailyLimitAmount != WalletTransferDailyLimit || len(displayType) > 16 || len(displaySymbol) > 16 {
 		return nil, ErrWalletTransferInvalid
 	}
 	// The smallest transfer is one display unit: a hundredth of the daily cap.
@@ -694,20 +699,47 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 	if identity.UserID <= 0 || identity.SessionID == "" || input.QuoteToken == "" || len(input.LoginPassword) > common.MaxAccountPasswordLength*4 || len(input.PaymentPassword) > common.MaxAccountPasswordLength*4 || len(input.TwoFACode) > 32 {
 		return nil, ErrWalletTransferInvalid
 	}
+	// Hashing both passwords is the slow part. Do it before taking the lock
+	// that also holds back batch quota flushes; the transaction reuses each
+	// result only while the stored hash is still the one checked here.
+	var checkedLoginHash, checkedPaymentHash string
+	var checkedLoginValid, checkedPaymentValid bool
+	var storedLogin User
+	if DB.Select("password").First(&storedLogin, identity.UserID).Error == nil && storedLogin.Password != "" {
+		checkedLoginHash = storedLogin.Password
+		checkedLoginValid = common.ValidatePasswordAndHash(input.LoginPassword, checkedLoginHash)
+	}
+	var storedSecurity WalletSecurity
+	if DB.Select("password_hash").Where("user_id = ?", identity.UserID).First(&storedSecurity).Error == nil && storedSecurity.PasswordHash != "" {
+		checkedPaymentHash = storedSecurity.PasswordHash
+		checkedPaymentValid = common.ValidatePasswordAndHash(input.PaymentPassword, checkedPaymentHash)
+	}
+
 	userQuotaBatchFlushMu.Lock()
 	defer userQuotaBatchFlushMu.Unlock()
+
+	// An undecided execution holds usage taken from the batch queue: it is in
+	// the database already, or goes back to the queue. A new transfer must not
+	// write a balance before that is known, so undecided executions are decided
+	// first, under this lock, where no new one can appear; while one cannot be
+	// decided, transfers wait.
+	if !resolveAllUncertainWalletTransfers() {
+		return nil, ErrWalletTransferPreviousPending
+	}
 
 	var transfer WalletTransfer
 	var outcome error
 	var pending map[int]int
 	var cacheReserved bool
-	var cacheReservationAttempted bool
-	var cacheGeneration string
-	var reservationAmount int
+	// cacheOutcomeUnknown: a Redis error left it unclear whether the reservation ran.
+	var cacheOutcomeUnknown bool
+	// reservationKey names this execution's cache reservation. A retry with the
+	// same review gets a new one, so undoing one execution never touches another.
+	var reservationKey string
+	var quoteFlowId int64
 	var recipientCacheCredit quotaCreditCache
 	var succeeded bool
 	var alreadyCompleted bool
-	var senderId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		match := AuthFlowMatch{Purpose: WalletTransferQuotePurpose, UserId: identity.UserID, SessionId: identity.SessionID}
 		if err := applyAuthFlowMatch(tx.Model(&AuthFlow{}), input.QuoteToken, match).
@@ -719,6 +751,11 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		if err := applyAuthFlowMatch(tx, input.QuoteToken, match).First(&flow).Error; err != nil {
 			return ErrWalletTransferQuoteInvalid
 		}
+		quoteFlowId = flow.Id
+		// An earlier execution of this review whose commit answer was lost is
+		// decided here: the flow row is locked (or already consumed), so its
+		// state is final. Consumed means that execution committed.
+		settleUncertainWalletTransfer(flow.Id, flow.ConsumedAt != nil)
 		if flow.ConsumedAt != nil {
 			if err := ValidateAuthSessionWithTx(tx, identity); err != nil {
 				return err
@@ -767,7 +804,6 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		if err := tx.Select("id", "username", "display_name", "password", "status", "quota", "role").First(&sender, identity.UserID).Error; err != nil {
 			return err
 		}
-		senderId = sender.Id
 		var recipient User
 		if err := tx.Select("id", "username", "display_name", "status", "quota").First(&recipient, quote.RecipientId).Error; err != nil || recipient.Status != common.UserStatusEnabled || sender.Id == recipient.Id {
 			return ErrWalletTransferRecipientInvalid
@@ -825,8 +861,14 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		}
 		// Both are always checked and fail with one error, so a caller cannot
 		// learn which of the two passwords was right.
-		loginValid := common.ValidatePasswordAndHash(input.LoginPassword, sender.Password)
-		paymentValid := common.ValidatePasswordAndHash(input.PaymentPassword, security.PasswordHash)
+		loginValid := checkedLoginValid
+		if sender.Password != checkedLoginHash {
+			loginValid = common.ValidatePasswordAndHash(input.LoginPassword, sender.Password)
+		}
+		paymentValid := checkedPaymentValid
+		if security.PasswordHash != checkedPaymentHash {
+			paymentValid = common.ValidatePasswordAndHash(input.PaymentPassword, security.PasswordHash)
+		}
 		if !loginValid || !paymentValid {
 			security.FailedAttempts++
 			if security.FailedAttempts >= common.MaxFailAttempts {
@@ -860,21 +902,31 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 				return nil
 			}
 		}
-		if quote.RecipientId == sender.Id || quote.RecipientUsername != recipient.Username || quote.RecipientDisplayName != recipient.DisplayName || quote.Amount > common.MaxQuota || quote.Received > common.MaxQuota {
+		if quote.RecipientId == sender.Id || quote.RecipientUsername != recipient.Username || quote.RecipientDisplayName != recipient.DisplayName || quote.Amount > common.MaxWalletQuota || quote.Received > common.MaxWalletQuota {
 			return ErrWalletTransferRecipientInvalid
 		}
 		if common.RedisEnabled {
-			cacheReservationAttempted = true
-			reservationAmount = int(quote.Amount)
-			cacheGeneration, _ = common.RDB.HGet(context.Background(), getUserCacheKey(sender.Id), "QuotaGeneration").Result()
-			reserveResult, reserveErr := cacheTryReserveUserQuota(sender.Id, quote.Amount)
+			reservationKey = walletTransferReservationKey(flow.Id)
+			reserveResult, reserveErr := reserveWalletTransferQuota(sender.Id, reservationKey, quote.Amount)
 			if reserveErr == nil && reserveResult == cacheQuotaMiss {
 				if _, hydrateErr := GetUserCache(sender.Id); hydrateErr == nil {
-					cacheGeneration, _ = common.RDB.HGet(context.Background(), getUserCacheKey(sender.Id), "QuotaGeneration").Result()
-					reserveResult, reserveErr = cacheTryReserveUserQuota(sender.Id, quote.Amount)
+					reserveResult, reserveErr = reserveWalletTransferQuota(sender.Id, reservationKey, quote.Amount)
 				}
 			}
-			cacheReserved = reserveErr == nil && reserveResult == cacheQuotaOK
+			// With Redis, the cache is the authoritative available balance: it
+			// holds reservations of running requests that the database may not
+			// have received yet. Money only moves once the cache has reserved
+			// the amount; when it refuses, fails or cannot be loaded, the
+			// database balance may be stale, so the transfer is refused.
+			if reserveErr != nil || reserveResult != cacheQuotaOK {
+				outcome = ErrWalletTransferBalanceUnverified
+				if reserveErr == nil && reserveResult == cacheQuotaInsufficient {
+					outcome = ErrWalletTransferInsufficient
+				}
+				cacheOutcomeUnknown = reserveErr != nil
+				return nil
+			}
+			cacheReserved = true
 		}
 		pending = takeBatchUserQuotaDeltas(sender.Id, recipient.Id)
 		senderEffective := int64(sender.Quota) + int64(pending[sender.Id])
@@ -883,12 +935,14 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 			outcome = ErrWalletTransferInsufficient
 			return nil
 		}
-		if recipientEffective < 0 || recipientEffective > common.MaxQuota-quote.Received {
+		// Wallet balances are bounded by MaxWalletQuota, not by the per-request
+		// MaxQuota.
+		if recipientEffective < 0 || recipientEffective > common.MaxWalletQuota-quote.Received {
 			return ErrWalletQuotaLimitExceeded
 		}
 		newSenderQuota := senderEffective - quote.Amount
 		newRecipientQuota := recipientEffective + quote.Received
-		if newSenderQuota < 0 || newSenderQuota > common.MaxQuota || newRecipientQuota > common.MaxQuota {
+		if newSenderQuota < 0 || newSenderQuota > common.MaxWalletQuota || newRecipientQuota > common.MaxWalletQuota {
 			return ErrWalletQuotaLimitExceeded
 		}
 		if err := tx.Model(&User{}).Where("id = ?", sender.Id).Update("quota", newSenderQuota).Error; err != nil {
@@ -913,19 +967,32 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		succeeded = true
 		return nil
 	})
-	if len(pending) > 0 && (!succeeded || err != nil) {
+	// The work ran but the commit reported an error, so it may or may not
+	// have been committed. Restoring the queued usage would charge it twice if
+	// it was; dropping it would lose it if it was not. Park both the usage and
+	// the reservation until the database can tell.
+	if succeeded && err != nil {
+		reservation := ""
+		if cacheReserved {
+			reservation = reservationKey
+		}
+		common.SysError(common.LogText("wallet transfer commit outcome unknown for quote flow %d: %s", quoteFlowId, err.Error()))
+		parkUncertainWalletTransfer(&uncertainWalletTransfer{
+			flowId: quoteFlowId, senderId: identity.UserID, pending: pending, reservationKey: reservation,
+		})
+		return nil, ErrWalletTransferOutcomeUnknown
+	}
+	committed := succeeded && err == nil
+	if len(pending) > 0 && !committed {
 		restoreBatchUserQuotaDeltas(pending)
 	}
-	if cacheReservationAttempted && (!succeeded || err != nil) {
-		if cacheReserved {
-			releaseWalletTransferCacheReservation(identity.UserID, reservationAmount, cacheGeneration)
-		} else {
-			// A Redis timeout can happen after the reservation script ran. Drop the
-			// possibly stale cache whenever no database transfer was committed.
-			if invalidateErr := invalidateUserCache(identity.UserID); invalidateErr != nil {
-				common.SysError(common.LogText("failed to invalidate sender cache after wallet transfer rollback: %s", invalidateErr.Error()))
-			}
-		}
+	switch {
+	case committed && cacheReserved:
+		forgetWalletTransferReservation(reservationKey)
+	case !committed && (cacheReserved || cacheOutcomeUnknown):
+		// Undo this execution's reservation only. Dropping the whole cache would
+		// also drop reservations of running requests and let a retry spend them.
+		releaseWalletTransferReservation(identity.UserID, reservationKey)
 	}
 	if err != nil {
 		return nil, err
@@ -945,29 +1012,214 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		"id": transfer.SenderId, "trade_no": transfer.TradeNo,
 	}))
 	if common.RedisEnabled {
+		// The sender's cache already holds this transfer's reservation; never
+		// drop it, as that would also drop reservations of running requests.
 		syncCreditUserQuotaCache(transfer.RecipientId, int(transfer.Received), "wallet transfer", recipientCacheCredit)
-		if !cacheReserved {
-			if err := invalidateUserCache(senderId); err != nil {
-				common.SysError(common.LogText("failed to invalidate sender cache after wallet transfer: %s", err.Error()))
-			}
-		}
 	}
 	return &transfer, nil
 }
 
-func releaseWalletTransferCacheReservation(userId, amount int, generation string) {
-	if !common.RedisEnabled || amount <= 0 || generation == "" {
-		return
-	}
-	const script = `
-if redis.call('HGET', KEYS[1], 'QuotaGeneration') ~= ARGV[1]
+const walletTransferReservationTTL = 10 * time.Minute
+
+// walletTransferReserveScript takes the amount from the cached balance and, in
+// the same step, records what it took under this execution's key, with the
+// cache generation it applied to. The Redis client may resend the command when
+// an answer is lost; with the same key it then takes nothing a second time.
+// Each execution has its own key, so this never lets one execution reuse
+// another's reservation.
+const walletTransferReserveScript = `
+if redis.call('EXISTS', KEYS[2]) == 1 then
+  return 1
+end
+if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
+  or tonumber(redis.call('HGET', KEYS[1], 'CacheSchema') or '0') ~= tonumber(ARGV[3])
+  or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
+  return -1
+end
+local quota = tonumber(redis.call('HGET', KEYS[1], 'Quota'))
+if quota == nil or quota < tonumber(ARGV[1]) then
+  return 0
+end
+redis.call('HINCRBY', KEYS[1], 'Quota', -tonumber(ARGV[1]))
+redis.call('HSET', KEYS[2], 'amount', ARGV[1], 'generation', redis.call('HGET', KEYS[1], 'QuotaGeneration') or '')
+redis.call('EXPIRE', KEYS[2], ARGV[4])
+return 1`
+
+// walletTransferReleaseScript gives back exactly what the reservation took, if
+// it was taken and the cache it applied to is still the current one.
+const walletTransferReleaseScript = `
+if redis.call('EXISTS', KEYS[2]) == 0 then
+  return 0
+end
+local amount = redis.call('HGET', KEYS[2], 'amount')
+local generation = redis.call('HGET', KEYS[2], 'generation') or ''
+redis.call('DEL', KEYS[2])
+if (redis.call('HGET', KEYS[1], 'QuotaGeneration') or '') ~= generation
   or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
   return 0
 end
-redis.call('HINCRBY', KEYS[1], 'Quota', ARGV[2])
+redis.call('HINCRBY', KEYS[1], 'Quota', amount)
 return 1`
-	if err := common.RDB.Eval(context.Background(), script, []string{getUserCacheKey(userId)}, generation, amount).Err(); err != nil {
-		common.SysError(common.LogText("failed to restore wallet balance after transfer rollback: %s", err.Error()))
+
+// walletTransferReservationKey is unique per execution: the review's flow ID
+// plus a random suffix, so retries of one review never share a reservation.
+func walletTransferReservationKey(flowId int64) string {
+	return fmt.Sprintf("wallet_transfer:reservation:%d:%s", flowId, common.GetRandomString(16))
+}
+
+func reserveWalletTransferQuota(userId int, key string, amount int64) (cacheQuotaResult, error) {
+	result, err := common.RDB.Eval(context.Background(), walletTransferReserveScript,
+		[]string{getUserCacheKey(userId), key},
+		amount, userId, userCacheSchemaVersion, int(walletTransferReservationTTL/time.Second)).Int()
+	return quotaResultFromLua(result, err)
+}
+
+// releaseWalletTransferReservation undoes a reservation whose transfer did not
+// happen. Releasing one that was never taken does nothing, so it is safe after
+// an unclear Redis answer. While Redis stays unreachable it retries in the
+// background; if it never succeeds the cache only under-reports the balance
+// until it is reloaded, which can never let money be spent twice.
+func releaseWalletTransferReservation(userId int, key string) {
+	// The background retries keep using the client this reservation was made on.
+	client := common.RDB
+	release := func() error {
+		return client.Eval(context.Background(), walletTransferReleaseScript,
+			[]string{getUserCacheKey(userId), key}).Err()
+	}
+	if err := release(); err == nil {
+		return
+	}
+	gopool.Go(func() {
+		for attempt := 1; attempt <= 5; attempt++ {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+			err := release()
+			if err == nil {
+				return
+			}
+			if attempt == 5 {
+				common.SysError(common.LogText("failed to release wallet transfer reservation %s for user %d: %s", key, userId, err.Error()))
+			}
+		}
+	})
+}
+
+// forgetWalletTransferReservation drops the record of a reservation whose
+// transfer was committed; it expires on its own if this fails.
+func forgetWalletTransferReservation(key string) {
+	_ = common.RDB.Del(context.Background(), key).Err()
+}
+
+// uncertainWalletTransfer is an execution whose commit reported an error. Its
+// queued usage and cache reservation wait here until it is known whether the
+// commit happened.
+type uncertainWalletTransfer struct {
+	flowId         int64
+	senderId       int
+	pending        map[int]int
+	reservationKey string
+}
+
+// uncertainWalletTransfers holds parked executions by quote flow ID.
+var uncertainWalletTransfers sync.Map
+
+// walletTransferResolveDelay is the wait before each background check of a
+// parked execution. The first wait lets an in-flight commit finish.
+var walletTransferResolveDelay = func(attempt int) time.Duration {
+	return min(time.Duration(attempt+1)*5*time.Second, 10*time.Minute)
+}
+
+func parkUncertainWalletTransfer(item *uncertainWalletTransfer) {
+	uncertainWalletTransfers.Store(item.flowId, item)
+	gopool.Go(func() {
+		for attempt := 0; ; attempt++ {
+			time.Sleep(walletTransferResolveDelay(attempt))
+			if _, parked := uncertainWalletTransfers.Load(item.flowId); !parked {
+				return
+			}
+			err := resolveUncertainWalletTransfer(item.flowId)
+			if err == nil {
+				return
+			}
+			if attempt%10 == 9 {
+				common.SysError(common.LogText("wallet transfer for quote flow %d is still undecided: %s", item.flowId, err.Error()))
+			}
+		}
+	})
+}
+
+// resolveUncertainWalletTransfer decides a parked execution from the database.
+// It locks the quote flow row, which waits for a commit still in flight; a
+// consumed flow means the execution committed. It returns an error, and keeps
+// the execution parked, while the database cannot be read.
+func resolveUncertainWalletTransfer(flowId int64) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var flow AuthFlow
+		err := lockForUpdate(tx).Select("id", "consumed_at").First(&flow, flowId).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// The flow was cleaned up; the transfer row tells instead.
+			var transfers int64
+			if err := tx.Model(&WalletTransfer{}).Where("quote_flow_id = ?", flowId).Count(&transfers).Error; err != nil {
+				return err
+			}
+			settleUncertainWalletTransfer(flowId, transfers > 0)
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		settleUncertainWalletTransfer(flowId, flow.ConsumedAt != nil)
+		return nil
+	})
+}
+
+// settleUncertainWalletTransfer applies the decision for a parked execution,
+// once. If it committed, its usage is already in the balance and its
+// reservation stays taken; otherwise the usage goes back to the queue and the
+// reservation is returned.
+func settleUncertainWalletTransfer(flowId int64, committed bool) {
+	value, parked := uncertainWalletTransfers.LoadAndDelete(flowId)
+	if !parked {
+		return
+	}
+	item := value.(*uncertainWalletTransfer)
+	if committed {
+		if item.reservationKey != "" {
+			forgetWalletTransferReservation(item.reservationKey)
+		}
+		return
+	}
+	restoreBatchUserQuotaDeltas(item.pending)
+	if item.reservationKey != "" {
+		releaseWalletTransferReservation(item.senderId, item.reservationKey)
+	}
+}
+
+// resolveAllUncertainWalletTransfers tries to decide every parked execution
+// and reports whether none is left.
+func resolveAllUncertainWalletTransfers() bool {
+	settled := true
+	uncertainWalletTransfers.Range(func(key, _ any) bool {
+		if err := resolveUncertainWalletTransfer(key.(int64)); err != nil {
+			settled = false
+		}
+		return true
+	})
+	return settled
+}
+
+// SettlePendingQuotaBeforeShutdown decides undecided wallet transfers, which
+// returns usage of rolled-back ones to the batch queue, then writes the queue.
+// Both live only in memory, so a graceful restart would otherwise lose them.
+func SettlePendingQuotaBeforeShutdown() {
+	if !resolveAllUncertainWalletTransfers() {
+		uncertainWalletTransfers.Range(func(key, value any) bool {
+			item := value.(*uncertainWalletTransfer)
+			common.SysError(common.LogText("wallet transfer for quote flow %v is still undecided at shutdown; queued quota changes held with it: %v", key, item.pending))
+			return true
+		})
+	}
+	if common.BatchUpdateEnabled {
+		batchUpdate()
 	}
 }
 

@@ -25,6 +25,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { AxiosError } from 'axios'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import type { WalletTransferStatus } from '@/features/wallet/types'
@@ -251,6 +252,60 @@ it('transfers after the details are confirmed and the passwords and 2FA code are
   )
 
   expect(screen.getByLabelText('Recipient username or user ID')).toHaveValue('')
+})
+
+it('keeps the same review after a network failure and finds the completed transfer with it', async () => {
+  let confirmCalls = 0
+  const view = renderForm(senderStatus(), async () => {
+    confirmCalls += 1
+    if (confirmCalls === 1) {
+      // The response never arrived: the server may or may not have transferred.
+      throw new AxiosError('Network Error', 'ERR_NETWORK')
+    }
+    return {
+      data: {
+        success: true,
+        data: {
+          id: 7,
+          trade_no: 'WT2026112500000007',
+          recipient_id: 42,
+          recipient_username: 'bob',
+          amount: 1_000_000,
+          fee: 0,
+          received: 1_000_000,
+        },
+      },
+    }
+  })
+  const user = userEvent.setup()
+  await fillTransferToBob(user)
+  await user.click(screen.getByRole('button', { name: 'Transfer balance' }))
+  const dialog = await screen.findByRole('dialog')
+  await user.click(
+    within(dialog).getByRole('button', { name: 'Correct, continue' })
+  )
+  await user.type(within(dialog).getByLabelText('Payment password'), 'pay-pw')
+  await user.type(within(dialog).getByLabelText('Login password'), 'login-pw')
+  await user.click(
+    within(dialog).getByRole('button', { name: 'Confirm transfer' })
+  )
+
+  const check = await within(dialog).findByRole('button', {
+    name: 'Check result',
+  })
+  expect(dialog).toHaveTextContent('Transfer result not confirmed')
+
+  await user.click(check)
+
+  expect(await screen.findByText('Transfer completed')).toBeVisible()
+  const confirms = view.post.mock.calls.filter(
+    (call) => call[0] === CONFIRM_URL
+  )
+  expect(confirms).toHaveLength(2)
+  expect(confirms[1][1]).toEqual(confirms[0][1])
+  expect(
+    view.post.mock.calls.filter((call) => call[0] === QUOTE_URL)
+  ).toHaveLength(1)
 })
 
 it('closes the dialog and keeps recipient and amount after a rejected transfer', async () => {

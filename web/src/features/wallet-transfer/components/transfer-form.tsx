@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
+import axios from 'axios'
 import { CheckCircle2, Loader2, Search, UserRound } from 'lucide-react'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -50,6 +51,13 @@ import {
   type TransferCredentials,
 } from './transfer-confirm-dialog'
 
+/** True when the request may have reached the server without an answer. */
+function isTransferOutcomeUnknown(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false
+  const status = error.response?.status
+  return status === undefined || status >= 500
+}
+
 interface TransferFormProps {
   /** Undefined while the sender's transfer settings are loading. */
   status: WalletTransferStatus | undefined
@@ -76,6 +84,9 @@ export function TransferForm(props: TransferFormProps) {
   const [preparing, setPreparing] = useState(false)
   const [transferring, setTransferring] = useState(false)
   const [completed, setCompleted] = useState<WalletTransferRecord | null>(null)
+  // Set while the last submission got no answer, to check it with the same review.
+  const [unknownCredentials, setUnknownCredentials] =
+    useState<TransferCredentials | null>(null)
 
   const searchTerm = debouncedKeyword.trim()
   const recipientQuery = useQuery({
@@ -138,6 +149,7 @@ export function TransferForm(props: TransferFormProps) {
   const handleSubmit = async (credentials: TransferCredentials) => {
     if (!quote) return
     setTransferring(true)
+    setUnknownCredentials(null)
     try {
       const record = await confirmWalletTransfer({
         quote_token: quote.quote_token,
@@ -150,6 +162,13 @@ export function TransferForm(props: TransferFormProps) {
       setQuote(null)
       setCompleted(record)
     } catch (error) {
+      // No answer means the transfer may have gone through. Keep this review:
+      // sending it again returns the finished transfer, or runs it if it never
+      // arrived, but can never move the balance twice.
+      if (isTransferOutcomeUnknown(error)) {
+        setUnknownCredentials(credentials)
+        return
+      }
       handleServerError(error, t('Transfer failed'))
       // The server spends a review on every submission, so the dialog closes
       // and a retry starts from the form, which keeps recipient and amount.
@@ -387,7 +406,14 @@ export function TransferForm(props: TransferFormProps) {
         availableQuota={props.availableQuota}
         twoFAEnabled={status?.two_fa_enabled === true}
         submitting={transferring}
-        onCancel={() => setQuote(null)}
+        outcomeUnknown={unknownCredentials !== null}
+        onCheckResult={() => {
+          if (unknownCredentials) void handleSubmit(unknownCredentials)
+        }}
+        onCancel={() => {
+          setQuote(null)
+          setUnknownCredentials(null)
+        }}
         onSubmit={handleSubmit}
       />
     </div>
