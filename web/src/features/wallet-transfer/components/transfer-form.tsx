@@ -21,6 +21,7 @@ import { CheckCircle2, Loader2, Search, UserRound } from 'lucide-react'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -48,12 +49,6 @@ import {
   TransferConfirmDialog,
   type TransferCredentials,
 } from './transfer-confirm-dialog'
-
-function userLabel(user: WalletTransferRecipient): string {
-  return user.display_name
-    ? `${user.display_name} (@${user.username})`
-    : `@${user.username}`
-}
 
 interface TransferFormProps {
   /** Undefined while the sender's transfer settings are loading. */
@@ -179,8 +174,24 @@ export function TransferForm(props: TransferFormProps) {
         </div>
         <dl className='bg-muted/40 w-full max-w-sm space-y-2 rounded-lg border p-4 text-left'>
           <SummaryRow
+            label={t('Order number')}
+            value={
+              <span className='inline-flex items-center gap-1 font-mono'>
+                {completed.trade_no}
+                <CopyButton
+                  value={completed.trade_no}
+                  size='sm'
+                  className='size-6 p-0'
+                  iconClassName='size-3.5'
+                  tooltip={t('Copy order number')}
+                  aria-label={t('Copy order number')}
+                />
+              </span>
+            }
+          />
+          <SummaryRow
             label={t('Recipient')}
-            value={`@${completed.recipient_username} · ID ${completed.recipient_id}`}
+            value={`${completed.recipient_username} · ID ${completed.recipient_id}`}
           />
           <SummaryRow
             label={t('Transfer amount')}
@@ -216,7 +227,7 @@ export function TransferForm(props: TransferFormProps) {
                 </span>
                 <div className='min-w-0'>
                   <p className='truncate text-sm font-semibold'>
-                    {userLabel(recipient)}
+                    {recipient.username}
                   </p>
                   <p className='text-muted-foreground text-xs'>
                     {t('User ID')}: {recipient.id}
@@ -276,7 +287,7 @@ export function TransferForm(props: TransferFormProps) {
                 }}
               >
                 <span className='min-w-0 truncate font-medium'>
-                  {userLabel(candidate)}
+                  {candidate.username}
                 </span>
                 <span className='text-muted-foreground shrink-0 text-xs'>
                   {t('User ID')}: {candidate.id}

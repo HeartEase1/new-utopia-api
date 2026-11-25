@@ -50,7 +50,7 @@ import {
   TransferHistory,
   TransferReconciliationDialog,
 } from './components/transfer-history'
-import { TransferOverview } from './components/transfer-overview'
+import { TransferNotes, TransferOverview } from './components/transfer-overview'
 
 export function WalletTransfer() {
   const { t } = useTranslation()
@@ -191,81 +191,88 @@ export function WalletTransfer() {
               </Alert>
             ) : null}
 
-            <div className='grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]'>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t('Transfer balance')}</CardTitle>
-                  <CardDescription>
-                    {t(
-                      'Send part of your wallet balance to another user of this site.'
-                    )}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className='space-y-4'>
-                  {status && !status.has_login_password ? (
-                    <Alert variant='destructive'>
-                      <AlertTriangle />
-                      <AlertTitle>
-                        {t('A login password is required')}
-                      </AlertTitle>
-                      <AlertDescription>
-                        {t(
-                          'Set a login password in your account security settings before transferring balance.'
-                        )}
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-                  {status && !status.has_payment_password ? (
-                    <Alert>
-                      <AlertTriangle />
-                      <AlertTitle>{t('Payment password required')}</AlertTitle>
-                      <AlertDescription>
-                        {emailReady
-                          ? t(
-                              'Transfers are authorized with a separate payment password. Set one to start.'
-                            )
-                          : t(
-                              'Bind an email address before setting a payment password.'
-                            )}
-                        <div className='mt-2'>
-                          {emailReady ? (
-                            <Button
-                              size='sm'
-                              onClick={() => setPasswordOpen(true)}
-                            >
-                              {t('Set payment password')}
-                            </Button>
-                          ) : (
-                            <Button
-                              size='sm'
-                              variant='outline'
-                              render={<Link to='/security' />}
-                            >
-                              {t('Bind email')}
-                            </Button>
+            <div className='grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]'>
+              <div className='min-w-0 space-y-4'>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('Transfer balance')}</CardTitle>
+                    <CardDescription>
+                      {t(
+                        'Send part of your wallet balance to another user of this site.'
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className='space-y-4'>
+                    {status && !status.has_login_password ? (
+                      <Alert variant='destructive'>
+                        <AlertTriangle />
+                        <AlertTitle>
+                          {t('A login password is required')}
+                        </AlertTitle>
+                        <AlertDescription>
+                          {t(
+                            'Set a login password in your account security settings before transferring balance.'
                           )}
-                        </div>
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-                  {status &&
-                  !status.limits_exempt &&
-                  status.attempt_count >= status.attempt_limit ? (
-                    <Alert variant='destructive'>
-                      <AlertTriangle />
-                      <AlertDescription>
-                        {t('You have reached today’s transfer attempt limit.')}
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+                    {status && !status.has_payment_password ? (
+                      <Alert>
+                        <AlertTriangle />
+                        <AlertTitle>
+                          {t('Payment password required')}
+                        </AlertTitle>
+                        <AlertDescription>
+                          {emailReady
+                            ? t(
+                                'Transfers are authorized with a separate payment password. Set one to start.'
+                              )
+                            : t(
+                                'Bind an email address before setting a payment password.'
+                              )}
+                          <div className='mt-2'>
+                            {emailReady ? (
+                              <Button
+                                size='sm'
+                                onClick={() => setPasswordOpen(true)}
+                              >
+                                {t('Set payment password')}
+                              </Button>
+                            ) : (
+                              <Button
+                                size='sm'
+                                variant='outline'
+                                render={<Link to='/security' />}
+                              >
+                                {t('Bind email')}
+                              </Button>
+                            )}
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+                    {status &&
+                    !status.limits_exempt &&
+                    status.attempt_count >= status.attempt_limit ? (
+                      <Alert variant='destructive'>
+                        <AlertTriangle />
+                        <AlertDescription>
+                          {t(
+                            'You have reached today’s transfer attempt limit.'
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
 
-                  <TransferForm
-                    status={status}
-                    availableQuota={availableQuota ?? 0}
-                    onAttempted={refresh}
-                  />
-                </CardContent>
-              </Card>
+                    <TransferForm
+                      status={status}
+                      availableQuota={availableQuota ?? 0}
+                      onAttempted={refresh}
+                    />
+                  </CardContent>
+                </Card>
+                <TransferNotes />
+              </div>
 
               <TransferOverview
                 status={status}

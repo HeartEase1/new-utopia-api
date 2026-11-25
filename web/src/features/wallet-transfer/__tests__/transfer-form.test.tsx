@@ -137,7 +137,7 @@ function renderForm(
 // Picks bob and enters an amount.
 async function fillTransferToBob(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Recipient username or user ID'), 'bob')
-  await user.click(await screen.findByRole('button', { name: /@bob/ }))
+  await user.click(await screen.findByRole('button', { name: /bob/ }))
   await user.type(screen.getByLabelText('Transfer amount'), '2')
 }
 
@@ -172,7 +172,7 @@ it('refuses an amount below the minimum of one unit', async () => {
   renderForm(senderStatus())
   const user = userEvent.setup()
   await user.type(screen.getByLabelText('Recipient username or user ID'), 'bob')
-  await user.click(await screen.findByRole('button', { name: /@bob/ }))
+  await user.click(await screen.findByRole('button', { name: /bob/ }))
 
   await user.type(screen.getByLabelText('Transfer amount'), '0.5')
 
@@ -192,7 +192,7 @@ it('shows the recipient, amounts and the irreversibility warning before asking f
   await user.click(screen.getByRole('button', { name: 'Transfer balance' }))
 
   const dialog = await screen.findByRole('dialog')
-  expect(dialog).toHaveTextContent('@bob')
+  expect(dialog).toHaveTextContent('bob')
   expect(dialog).toHaveTextContent('42')
   expect(within(dialog).getByText('A transfer cannot be undone')).toBeVisible()
   expect(
@@ -275,7 +275,7 @@ it('closes the dialog and keeps recipient and amount after a rejected transfer',
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   )
   expect(screen.getByLabelText('Transfer amount')).toHaveValue(2)
-  expect(screen.getByText('@bob')).toBeVisible()
+  expect(screen.getByText('bob')).toBeVisible()
   expect(screen.queryByText('Transfer completed')).not.toBeInTheDocument()
   expect(view.onAttempted).toHaveBeenCalled()
   expect(

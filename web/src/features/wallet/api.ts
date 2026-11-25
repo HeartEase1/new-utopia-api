@@ -142,12 +142,14 @@ export async function completeWalletTransferPasswordFlow(request: {
 
 export async function getWalletTransferHistory(
   page: number,
-  pageSize: number
+  pageSize: number,
+  tradeNo = ''
 ): Promise<{ items: WalletTransferRecord[]; total: number }> {
   const params = new URLSearchParams({
     p: String(page),
     page_size: String(pageSize),
   })
+  if (tradeNo) params.set('trade_no', tradeNo)
   const res = await api.get(`/api/user/wallet-transfer/history?${params}`)
   return requireWalletSuccess(res.data, 'Failed to load transfer history')
 }

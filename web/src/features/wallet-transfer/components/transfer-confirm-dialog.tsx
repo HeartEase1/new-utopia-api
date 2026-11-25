@@ -150,11 +150,7 @@ export function TransferConfirmDialog(props: TransferConfirmDialogProps) {
           <dl className='bg-muted/40 space-y-2 rounded-lg border p-4'>
             <SummaryRow
               label={t('Recipient')}
-              value={
-                quote.recipient_display_name
-                  ? `${quote.recipient_display_name} (@${quote.recipient_username})`
-                  : `@${quote.recipient_username}`
-              }
+              value={quote.recipient_username}
               strong
             />
             <SummaryRow label={t('User ID')} value={quote.recipient_id} />

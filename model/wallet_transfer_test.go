@@ -2,6 +2,7 @@ package model
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,6 +217,59 @@ func TestWalletTransferRecipientSearchNeedsCompleteUsernameOrID(t *testing.T) {
 			ids = append(ids, item["id"])
 		}
 		assert.Equal(t, want, ids, "keyword %q", keyword)
+	}
+}
+
+func TestWalletTransferHistoryShowsOrderNumbersAndFindsOneByIt(t *testing.T) {
+	prepareWalletTransferTest(t)
+	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "history-sender", 100, true)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "history-recipient", 0, false)
+	outsider, _, _, _ := createWalletTransferTestAccount(t, "history-outsider", 0, false)
+	var transfers []*WalletTransfer
+	for range 2 {
+		quote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 2)
+		transfer, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
+			QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
+		})
+		require.NoError(t, err)
+		transfers = append(transfers, transfer)
+	}
+	first := transfers[0]
+	assert.Equal(t, WalletTransferTradeNo(first.DateKey, first.Id), first.TradeNo)
+	assert.Regexp(t, `^WT\d{8}\d{8,}$`, first.TradeNo)
+
+	// Both sides see every record with its order number, newest first.
+	for _, userId := range []int{sender.Id, recipient.Id} {
+		records, total, err := GetWalletTransfersForUser(userId, "", 0, 20)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), total)
+		require.Len(t, records, 2)
+		assert.Equal(t, transfers[1].Id, records[0].Id)
+		assert.Equal(t, transfers[1].TradeNo, records[0].TradeNo)
+		assert.Equal(t, int64(10), records[0].Amount)
+	}
+
+	// An order number, in any letter case, finds only that transfer, and only for its parties.
+	records, total, err := GetWalletTransfersForUser(sender.Id, strings.ToLower(first.TradeNo), 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, records, 1)
+	assert.Equal(t, first.Id, records[0].Id)
+	records, _, err = GetWalletTransfersForUser(outsider.Id, first.TradeNo, 0, 20)
+	require.NoError(t, err)
+	assert.Empty(t, records)
+	records, _, err = GetWalletTransfersForUser(sender.Id, "WT2099010100000001", 0, 20)
+	require.NoError(t, err)
+	assert.Empty(t, records)
+	adminRecords, adminTotal, _, err := SearchWalletTransfers(0, first.TradeNo, "", 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), adminTotal)
+	require.Len(t, adminRecords, 1)
+	assert.Equal(t, first.TradeNo, adminRecords[0].TradeNo)
+
+	for _, invalid := range []string{"", "WT", "WT20261301" + "00000001", "XX2026010100000001", "WT2026010100000000"} {
+		_, _, ok := ParseWalletTransferTradeNo(invalid)
+		assert.False(t, ok, invalid)
 	}
 }
 

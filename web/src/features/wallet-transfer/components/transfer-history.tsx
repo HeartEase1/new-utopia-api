@@ -17,14 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -64,18 +66,19 @@ export function TransferHistory(props: TransferHistoryProps) {
     queryFn: async () =>
       isAdmin
         ? getAdminWalletTransfers(page, pageSize, debouncedKeyword.trim(), date)
-        : getWalletTransferHistory(page, pageSize),
+        : getWalletTransferHistory(page, pageSize, debouncedKeyword.trim()),
     enabled: props.enabled ?? true,
     staleTime: 0,
     meta: { errorToast: false },
   })
+  // The own history is a bare page, whose `page` field is only the page
+  // number; the reconciliation wraps its page next to `total_fee`.
   let pageData: { items: WalletTransferRecord[]; total: number } | undefined
   if (historyQuery.data) {
-    if ('page' in historyQuery.data) {
-      pageData = historyQuery.data.page
-    } else {
-      pageData = historyQuery.data
-    }
+    pageData =
+      'total_fee' in historyQuery.data
+        ? historyQuery.data.page
+        : historyQuery.data
   }
   const records = pageData?.items ?? []
   const total = pageData?.total ?? 0
@@ -86,99 +89,126 @@ export function TransferHistory(props: TransferHistoryProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   const resetPage = () => setPage(1)
-  const personName = (username: string, displayName: string, userId: number) =>
-    displayName
-      ? `${displayName} (@${username}) · #${userId}`
-      : `@${username} · #${userId}`
-
   const renderRecord = (record: WalletTransferRecord) => {
-    const sent = record.sender_id === props.currentUserId
-    const otherUser = sent
-      ? personName(
-          record.recipient_username,
-          record.recipient_display_name,
-          record.recipient_id
-        )
-      : personName(
-          record.sender_username,
-          record.sender_display_name,
-          record.sender_id
-        )
+    const sent = !isAdmin && record.sender_id === props.currentUserId
+    const received = !isAdmin && record.recipient_id === props.currentUserId
+    let direction: {
+      label: string
+      variant: 'neutral' | 'warning' | 'success'
+    } = { label: t('Balance transfer'), variant: 'neutral' }
+    if (sent) direction = { label: t('Transfer out'), variant: 'warning' }
+    if (received) direction = { label: t('Transfer in'), variant: 'success' }
 
     return (
-      <article key={record.id} className='rounded-lg border p-3 sm:p-4'>
-        <div className='flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between'>
-          <div className='min-w-0'>
-            {isAdmin ? (
-              <>
-                <p className='truncate text-sm font-medium'>
-                  {t('From')}:{' '}
-                  {personName(
-                    record.sender_username,
-                    record.sender_display_name,
-                    record.sender_id
-                  )}
-                </p>
-                <p className='mt-1 truncate text-sm font-medium'>
-                  {t('To')}:{' '}
-                  {personName(
-                    record.recipient_username,
-                    record.recipient_display_name,
-                    record.recipient_id
-                  )}
-                </p>
-              </>
-            ) : (
-              <p className='truncate text-sm font-medium'>
-                {sent
-                  ? t('Sent to {{user}}', { user: otherUser })
-                  : t('Received from {{user}}', { user: otherUser })}
-              </p>
-            )}
-            <p className='text-muted-foreground mt-1 text-xs'>
+      <article
+        key={record.id}
+        aria-label={t('Order {{trade_no}}', { trade_no: record.trade_no })}
+        className='rounded-lg border p-3 sm:p-4'
+      >
+        <div className='flex flex-wrap items-center justify-between gap-2'>
+          <div className='flex items-center gap-2'>
+            <StatusBadge
+              variant={direction.variant}
+              label={direction.label}
+              copyable={false}
+            />
+            <span className='text-muted-foreground text-xs tabular-nums'>
               {formatTimestampToDate(
                 Date.parse(record.created_at),
                 'milliseconds'
               )}
-            </p>
+            </span>
           </div>
-          <span className='text-muted-foreground shrink-0 text-xs'>
-            {t('Fee rate')}: {record.fee_percent}%
+          <span className='text-muted-foreground inline-flex items-center gap-1 text-xs'>
+            {t('Order number')}:
+            <span className='text-foreground font-mono'>{record.trade_no}</span>
+            <CopyButton
+              value={record.trade_no}
+              size='sm'
+              className='size-6 p-0'
+              iconClassName='size-3.5'
+              tooltip={t('Copy order number')}
+              aria-label={t('Copy order number')}
+            />
           </span>
         </div>
 
-        <div className='mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3'>
-          <div>
-            <Label className='text-muted-foreground text-xs'>
-              {t('Transfer amount')}
-            </Label>
-            <p className='mt-1 text-sm font-semibold tabular-nums'>
-              {formatQuota(record.amount)}
-            </p>
-          </div>
-          <div>
-            <Label className='text-muted-foreground text-xs'>
-              {t('Transfer fee')}
-            </Label>
-            <p className='mt-1 text-sm font-medium tabular-nums'>
-              {formatQuota(record.fee)}
-            </p>
-          </div>
-          <div>
-            <Label className='text-muted-foreground text-xs'>
-              {t(sent ? 'Recipient receives' : 'Amount received')}
-            </Label>
-            <p className='mt-1 text-sm font-semibold tabular-nums'>
-              {formatQuota(record.received)}
-            </p>
-          </div>
+        <div className='mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center'>
+          <TransferParty
+            label={t('Sender')}
+            username={record.sender_username}
+            userId={record.sender_id}
+            isYou={sent}
+          />
+          <ArrowRight
+            aria-hidden='true'
+            className='text-muted-foreground hidden size-4 sm:block'
+          />
+          <TransferParty
+            label={t('Recipient')}
+            username={record.recipient_username}
+            userId={record.recipient_id}
+            isYou={received}
+          />
         </div>
+
+        <dl className='bg-muted/40 mt-3 grid grid-cols-3 gap-3 rounded-md p-3'>
+          <div className='min-w-0'>
+            <dt className='text-muted-foreground text-xs'>
+              {t('Transfer amount')}
+            </dt>
+            <dd className='mt-1 text-sm font-semibold tabular-nums'>
+              {sent ? '−' : ''}
+              {formatQuota(record.amount)}
+            </dd>
+          </div>
+          <div className='min-w-0'>
+            <dt className='text-muted-foreground text-xs'>
+              {t('Transfer fee')} ({record.fee_percent}%)
+            </dt>
+            <dd className='mt-1 text-sm font-medium tabular-nums'>
+              {formatQuota(record.fee)}
+            </dd>
+          </div>
+          <div className='min-w-0'>
+            <dt className='text-muted-foreground text-xs'>
+              {t('Amount received')}
+            </dt>
+            <dd className='mt-1 text-sm font-semibold tabular-nums'>
+              {received ? '+' : ''}
+              {formatQuota(record.received)}
+            </dd>
+          </div>
+        </dl>
       </article>
     )
   }
 
   return (
     <div className='space-y-4'>
+      {isAdmin ? null : (
+        <div className='space-y-1.5 sm:max-w-sm'>
+          <Label htmlFor='wallet-transfer-history-order'>
+            {t('Find by order number')}
+          </Label>
+          <div className='relative'>
+            <Search className='text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2' />
+            <Input
+              id='wallet-transfer-history-order'
+              type='search'
+              value={keyword}
+              onChange={(event) => {
+                setKeyword(event.target.value)
+                resetPage()
+              }}
+              placeholder='WT2026…'
+              className='pl-9 font-mono'
+              autoComplete='off'
+            />
+          </div>
+        </div>
+      )}
+
       {isAdmin ? (
         <div className='grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]'>
           <div className='space-y-1.5'>
@@ -194,7 +224,7 @@ export function TransferHistory(props: TransferHistoryProps) {
                   setKeyword(event.target.value)
                   resetPage()
                 }}
-                placeholder={t('Search by user ID or username')}
+                placeholder={t('User ID, username or order number')}
                 className='pl-9'
               />
             </div>
@@ -315,5 +345,31 @@ export function TransferReconciliationDialog(props: {
         />
       </div>
     </Dialog>
+  )
+}
+
+function TransferParty(props: {
+  label: string
+  username: string
+  userId: number
+  isYou: boolean
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className='min-w-0'>
+      <p className='text-muted-foreground text-xs'>{props.label}</p>
+      <p className='truncate text-sm font-medium'>
+        {props.username}
+        {props.isYou ? (
+          <span className='text-muted-foreground font-normal'>
+            {' '}
+            ({t('you')})
+          </span>
+        ) : null}
+      </p>
+      <p className='text-muted-foreground text-xs tabular-nums'>
+        {t('User ID')}: {props.userId}
+      </p>
+    </div>
   )
 }

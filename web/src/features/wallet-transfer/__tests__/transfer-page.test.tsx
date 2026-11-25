@@ -97,6 +97,23 @@ it('opens the payment password dialog when the sender has none yet', async () =>
   expect(within(dialog).getByRole('button', { name: 'Continue' })).toBeEnabled()
 })
 
+it('places the transfer rules right after the form, before the limits', async () => {
+  renderPage()
+
+  const form = await screen.findByText('Transfer balance', {
+    selector: '[data-slot=card-title]',
+  })
+  const notes = screen.getByText('Before you transfer')
+  const limits = screen.getByText("Today's allowance")
+
+  expect(
+    form.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  expect(
+    notes.compareDocumentPosition(limits) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+})
+
 it('opens site-wide reconciliation for an administrator', async () => {
   useAuthStore
     .getState()

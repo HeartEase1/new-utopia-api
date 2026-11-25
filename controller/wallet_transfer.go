@@ -133,7 +133,7 @@ func ConfirmWalletTransfer(c *gin.Context) {
 
 func GetWalletTransferHistory(c *gin.Context) {
 	page := common.GetPageQuery(c)
-	records, total, err := model.GetWalletTransfersForUser(c.GetInt("id"), page.GetStartIdx(), page.GetPageSize())
+	records, total, err := model.GetWalletTransfersForUser(c.GetInt("id"), c.Query("trade_no"), page.GetStartIdx(), page.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return

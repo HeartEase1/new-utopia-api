@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -103,6 +104,42 @@ type WalletTransfer struct {
 	FeePercent           string    `json:"fee_percent" gorm:"type:varchar(16);not null"`
 	DateKey              string    `json:"-" gorm:"type:varchar(10);index:idx_wallet_transfer_sender_date;index:idx_wallet_transfer_recipient_date;not null"`
 	CreatedAt            time.Time `json:"created_at" gorm:"not null;index"`
+	// TradeNo is derived from DateKey and Id, so it needs no column of its own.
+	TradeNo string `json:"trade_no" gorm:"-"`
+}
+
+// WalletTransferTradeNo is the order number shown to users: "WT", the
+// Asia/Shanghai date, and the record ID padded to at least eight digits.
+func WalletTransferTradeNo(dateKey string, id int64) string {
+	return fmt.Sprintf("WT%s%08d", strings.ReplaceAll(dateKey, "-", ""), id)
+}
+
+// ParseWalletTransferTradeNo returns the date key and record ID an order
+// number stands for; ok is false for anything else.
+func ParseWalletTransferTradeNo(tradeNo string) (dateKey string, id int64, ok bool) {
+	digits, found := strings.CutPrefix(strings.ToUpper(strings.TrimSpace(tradeNo)), "WT")
+	if !found || len(digits) < 16 || len(digits) > 26 {
+		return "", 0, false
+	}
+	day, err := time.Parse("20060102", digits[:8])
+	if err != nil {
+		return "", 0, false
+	}
+	id, err = strconv.ParseInt(digits[8:], 10, 64)
+	if err != nil || id <= 0 || WalletTransferTradeNo(day.Format("2006-01-02"), id) != "WT"+digits {
+		return "", 0, false
+	}
+	return day.Format("2006-01-02"), id, true
+}
+
+func (t *WalletTransfer) AfterFind(*gorm.DB) error {
+	t.TradeNo = WalletTransferTradeNo(t.DateKey, t.Id)
+	return nil
+}
+
+func (t *WalletTransfer) AfterCreate(*gorm.DB) error {
+	t.TradeNo = WalletTransferTradeNo(t.DateKey, t.Id)
+	return nil
 }
 
 type WalletTransferQuote struct {
@@ -899,12 +936,13 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 	if outcome != nil {
 		return nil, outcome
 	}
-	RecordLog(transfer.SenderId, LogTypeSystem, common.NewMessage("Transferred {{quota}} to {{username}} (ID {{id}}), fee {{fee}}", map[string]any{
+	RecordLog(transfer.SenderId, LogTypeSystem, common.NewMessage("Transferred {{quota}} to {{username}} (ID {{id}}), fee {{fee}}, order {{trade_no}}", map[string]any{
 		"quota": logger.FormatQuota(int(transfer.Amount)), "username": transfer.RecipientUsername,
-		"id": transfer.RecipientId, "fee": logger.FormatQuota(int(transfer.Fee)),
+		"id": transfer.RecipientId, "fee": logger.FormatQuota(int(transfer.Fee)), "trade_no": transfer.TradeNo,
 	}))
-	RecordLog(transfer.RecipientId, LogTypeSystem, common.NewMessage("Received {{quota}} from {{username}} (ID {{id}})", map[string]any{
-		"quota": logger.FormatQuota(int(transfer.Received)), "username": transfer.SenderUsername, "id": transfer.SenderId,
+	RecordLog(transfer.RecipientId, LogTypeSystem, common.NewMessage("Received {{quota}} from {{username}} (ID {{id}}), order {{trade_no}}", map[string]any{
+		"quota": logger.FormatQuota(int(transfer.Received)), "username": transfer.SenderUsername,
+		"id": transfer.SenderId, "trade_no": transfer.TradeNo,
 	}))
 	if common.RedisEnabled {
 		syncCreditUserQuotaCache(transfer.RecipientId, int(transfer.Received), "wallet transfer", recipientCacheCredit)
@@ -1061,17 +1099,26 @@ func SearchWalletTransferRecipients(excludeUserId int, keyword string) ([]map[st
 	return recipients, nil
 }
 
-func GetWalletTransfersForUser(userId, startIdx, limit int) ([]WalletTransfer, int64, error) {
-	if userId <= 0 || startIdx < 0 || limit < 1 || limit > 100 {
+// GetWalletTransfersForUser lists transfers the user sent or received,
+// optionally only the one with the given order number.
+func GetWalletTransfersForUser(userId int, tradeNo string, startIdx, limit int) ([]WalletTransfer, int64, error) {
+	if userId <= 0 || startIdx < 0 || limit < 1 || limit > 100 || len(tradeNo) > 64 {
 		return nil, 0, ErrWalletTransferInvalid
 	}
 	query := DB.Model(&WalletTransfer{}).Where("(sender_id = ? OR recipient_id = ?)", userId, userId)
+	if strings.TrimSpace(tradeNo) != "" {
+		dateKey, id, ok := ParseWalletTransferTradeNo(tradeNo)
+		if !ok {
+			return []WalletTransfer{}, 0, nil
+		}
+		query = query.Where("id = ? AND date_key = ?", id, dateKey)
+	}
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	var records []WalletTransfer
-	if err := query.Order("created_at desc").Order("id desc").Offset(startIdx).Limit(limit).Find(&records).Error; err != nil {
+	records := []WalletTransfer{}
+	if err := query.Session(&gorm.Session{}).Order("created_at desc").Order("id desc").Offset(startIdx).Limit(limit).Find(&records).Error; err != nil {
 		return nil, 0, err
 	}
 	return records, total, nil
@@ -1098,7 +1145,9 @@ func SearchWalletTransfers(userId int, keyword, dateKey string, startIdx, limit 
 	if userId > 0 {
 		query = query.Where("(sender_id = ? OR recipient_id = ?)", userId, userId)
 	}
-	if keyword != "" {
+	if tradeDateKey, tradeId, ok := ParseWalletTransferTradeNo(keyword); ok {
+		query = query.Where("id = ? AND date_key = ?", tradeId, tradeDateKey)
+	} else if keyword != "" {
 		if id, err := strconv.Atoi(keyword); err == nil && id > 0 {
 			query = query.Where("(sender_id = ? OR recipient_id = ? OR sender_username LIKE ? OR recipient_username LIKE ?)", id, id, "%"+keyword+"%", "%"+keyword+"%")
 		} else {

@@ -314,6 +314,8 @@ export interface WalletTransferRecord {
   received: number
   fee_percent: string
   created_at: string
+  /** Order number, for example WT2026112500000012. */
+  trade_no: string
 }
 
 export interface WalletTransferPasswordFlow {

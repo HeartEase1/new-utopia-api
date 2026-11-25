@@ -195,41 +195,47 @@ export function TransferOverview(props: TransferOverviewProps) {
           ) : null}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className='text-sm'>{t('Before you transfer')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className='text-muted-foreground list-disc space-y-2 pl-4 text-xs leading-relaxed'>
-            <li>
-              {t(
-                'A completed transfer cannot be undone, recalled or refunded. The platform cannot reverse it for you.'
-              )}
-            </li>
-            <li>
-              {t(
-                'Check both the username and the user ID. Usernames can look alike; the ID identifies exactly one account.'
-              )}
-            </li>
-            <li>
-              {t(
-                'The fee is taken out of the amount you send, so the recipient receives the amount minus the fee.'
-              )}
-            </li>
-            <li>
-              {t(
-                'Never share your payment password or verification codes. Staff will never ask for them.'
-              )}
-            </li>
-            <li>
-              {t(
-                'Be careful with requests from strangers to transfer balance — a transfer sent by mistake or by fraud cannot be recovered.'
-              )}
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
     </div>
+  )
+}
+
+/** The rules of a transfer, shown next to the form. */
+export function TransferNotes() {
+  const { t } = useTranslation()
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className='text-sm'>{t('Before you transfer')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className='text-muted-foreground list-disc space-y-2 pl-4 text-xs leading-relaxed'>
+          <li>
+            {t(
+              'A completed transfer cannot be undone, recalled or refunded. The platform cannot reverse it for you.'
+            )}
+          </li>
+          <li>
+            {t(
+              'Check both the username and the user ID. Usernames can look alike; the ID identifies exactly one account.'
+            )}
+          </li>
+          <li>
+            {t(
+              'The fee is taken out of the amount you send, so the recipient receives the amount minus the fee.'
+            )}
+          </li>
+          <li>
+            {t(
+              'Never share your payment password or verification codes. Staff will never ask for them.'
+            )}
+          </li>
+          <li>
+            {t(
+              'Be careful with requests from strangers to transfer balance — a transfer sent by mistake or by fraud cannot be recovered.'
+            )}
+          </li>
+        </ul>
+      </CardContent>
+    </Card>
   )
 }
