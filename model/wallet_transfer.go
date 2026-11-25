@@ -35,6 +35,7 @@ var (
 	ErrWalletTransferInvalid          = errors.New("Wallet transfer request is invalid.")
 	ErrWalletTransferRecipientInvalid = errors.New("The recipient is unavailable.")
 	ErrWalletTransferInsufficient     = errors.New("Insufficient wallet balance.")
+	ErrWalletTransferBelowMinimum     = errors.New("The transfer amount is below the minimum of 1.")
 	ErrWalletTransferDailyLimit       = errors.New("The daily wallet transfer limit has been reached.")
 	ErrWalletTransferAttemptLimit     = errors.New("The daily wallet transfer attempt limit has been reached.")
 	ErrWalletTransferPasswordRequired = errors.New("Set a payment password before transferring balance.")
@@ -126,18 +127,24 @@ type WalletTransferQuoteResult struct {
 }
 
 type WalletTransferStatus struct {
-	HasLoginPassword   bool   `json:"has_login_password"`
-	HasEmail           bool   `json:"has_email"`
+	HasLoginPassword bool `json:"has_login_password"`
+	HasEmail         bool `json:"has_email"`
+	EmailExempt      bool `json:"email_exempt"`
+	// LimitsExempt: the root user has no daily amount cap or attempt limit.
+	LimitsExempt       bool   `json:"limits_exempt"`
 	Email              string `json:"email"`
 	HasPaymentPassword bool   `json:"has_payment_password"`
 	TwoFAEnabled       bool   `json:"two_fa_enabled"`
 	AttemptCount       int64  `json:"attempt_count"`
 	AttemptLimit       int64  `json:"attempt_limit"`
+	FeePercent         string `json:"fee_percent"`
 	UsedQuota          int64  `json:"used_quota"`
 	DailyLimitQuota    int64  `json:"daily_limit_quota"`
 	DailyLimitAmount   int    `json:"daily_limit_amount"`
-	DisplayType        string `json:"display_type"`
-	DisplaySymbol      string `json:"display_symbol"`
+	// MinQuota is the smallest amount one transfer may send.
+	MinQuota      int64  `json:"min_quota"`
+	DisplayType   string `json:"display_type"`
+	DisplaySymbol string `json:"display_symbol"`
 }
 
 type WalletTransferDailyLimitSnapshot struct {
@@ -164,10 +171,19 @@ type walletTransferQuoteState struct {
 }
 
 type walletPasswordFlowState struct {
-	Intent         string `json:"intent"`
-	Email          string `json:"email"`
-	CodeHash       string `json:"code_hash"`
-	FailedAttempts int    `json:"failed_attempts"`
+	Intent   string `json:"intent"`
+	Email    string `json:"email"`
+	CodeHash string `json:"code_hash"`
+	// EmailExempt marks a flow started by the root user without a bound email:
+	// it carries no code, and stays valid only while both conditions hold.
+	EmailExempt    bool `json:"email_exempt"`
+	FailedAttempts int  `json:"failed_attempts"`
+}
+
+// The root user can already grant balance to anyone, so it may manage its
+// payment password without binding an email. Every other check still applies.
+func walletPasswordEmailExempt(user *User) bool {
+	return user.Role == common.RoleRootUser && NormalizeEmail(user.Email) == ""
 }
 
 func walletTransferDateKey(now time.Time) string {
@@ -211,6 +227,10 @@ func walletTransferFee(amount int64, feePercent float64) (int64, string, error) 
 func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, amount int64, feePercent float64, dailyLimitQuota int64, dailyLimitAmount int, displayType, displaySymbol string) (*WalletTransferQuoteResult, error) {
 	if identity.UserID <= 0 || identity.SessionID == "" || recipientId <= 0 || amount <= 0 || amount > common.MaxQuota || dailyLimitQuota <= 0 || dailyLimitQuota > common.MaxQuota || dailyLimitAmount != WalletTransferDailyLimit || len(displayType) > 16 || len(displaySymbol) > 16 {
 		return nil, ErrWalletTransferInvalid
+	}
+	// The smallest transfer is one display unit: a hundredth of the daily cap.
+	if amount < dailyLimitQuota/WalletTransferDailyLimit {
+		return nil, ErrWalletTransferBelowMinimum
 	}
 	fee, feePercentSnapshot, err := walletTransferFee(amount, feePercent)
 	if err != nil {
@@ -300,6 +320,7 @@ func GetWalletTransferStatus(userId int, dailyLimitQuota int64, displayType, dis
 	}
 	dateKey := walletTransferDateKey(time.Now())
 	status := &WalletTransferStatus{
+		MinQuota:         dailyLimitQuota / WalletTransferDailyLimit,
 		DailyLimitQuota:  dailyLimitQuota,
 		DailyLimitAmount: WalletTransferDailyLimit, DisplayType: displayType, DisplaySymbol: displaySymbol,
 	}
@@ -313,9 +334,11 @@ func GetWalletTransferStatus(userId int, dailyLimitQuota int64, displayType, dis
 		status.DisplaySymbol = day.DisplaySymbol
 	}
 	var user User
-	if err := DB.Select("password", "email").First(&user, userId).Error; err != nil {
+	if err := DB.Select("password", "email", "role").First(&user, userId).Error; err != nil {
 		return nil, err
 	}
+	status.EmailExempt = walletPasswordEmailExempt(&user)
+	status.LimitsExempt = user.Role == common.RoleRootUser
 	status.HasLoginPassword = user.Password != ""
 	status.Email = common.MaskEmail(NormalizeEmail(user.Email))
 	status.HasEmail = user.Email != ""
@@ -356,12 +379,16 @@ func CreateWalletTransferPasswordFlow(identity AuthSessionIdentity, intent, code
 			return err
 		}
 		var user User
-		if err := tx.Select("email").First(&user, identity.UserID).Error; err != nil {
+		if err := tx.Select("email", "role").First(&user, identity.UserID).Error; err != nil {
 			return err
 		}
 		email = NormalizeEmail(user.Email)
-		if email == "" {
+		emailExempt := walletPasswordEmailExempt(&user)
+		if email == "" && !emailExempt {
 			return ErrEmailBindingRequired
+		}
+		if emailExempt {
+			codeHash = ""
 		}
 		var security WalletSecurity
 		err := tx.Select("user_id").Where("user_id = ?", identity.UserID).First(&security).Error
@@ -378,7 +405,7 @@ func CreateWalletTransferPasswordFlow(identity AuthSessionIdentity, intent, code
 			Update("consumed_at", now).Error; err != nil {
 			return err
 		}
-		state, err := common.Marshal(walletPasswordFlowState{Intent: intent, Email: email, CodeHash: codeHash})
+		state, err := common.Marshal(walletPasswordFlowState{Intent: intent, Email: email, CodeHash: codeHash, EmailExempt: emailExempt})
 		if err != nil {
 			return err
 		}
@@ -417,21 +444,21 @@ func CompleteWalletTransferPasswordFlow(identity AuthSessionIdentity, token, cod
 			return ErrWalletPasswordFlowInvalid
 		}
 		var state walletPasswordFlowState
-		if err := common.UnmarshalJsonStr(flow.Payload, &state); err != nil || state.CodeHash == "" || state.FailedAttempts >= WalletPasswordMaxAttempts {
+		if err := common.UnmarshalJsonStr(flow.Payload, &state); err != nil || (state.CodeHash == "" && !state.EmailExempt) || state.FailedAttempts >= WalletPasswordMaxAttempts {
 			return ErrWalletPasswordFlowLocked
 		}
 		if err := ValidateAuthSessionWithTx(tx, identity); err != nil {
 			return err
 		}
 		var user User
-		if err := tx.Select("email", "password").First(&user, identity.UserID).Error; err != nil {
+		if err := tx.Select("email", "password", "role").First(&user, identity.UserID).Error; err != nil {
 			return err
 		}
-		if NormalizeEmail(user.Email) != state.Email {
+		if NormalizeEmail(user.Email) != state.Email || state.EmailExempt != walletPasswordEmailExempt(&user) {
 			return ErrEmailBindingRequired
 		}
 		cleanCode, codeErr := common.ValidateNumericCode(code)
-		if codeErr != nil || !common.ValidatePasswordAndHash(cleanCode, state.CodeHash) {
+		if !state.EmailExempt && (codeErr != nil || !common.ValidatePasswordAndHash(cleanCode, state.CodeHash)) {
 			state.FailedAttempts++
 			payload, err := common.Marshal(state)
 			if err != nil {
@@ -571,18 +598,21 @@ func ValidateWalletTransferPasswordCode(identity AuthSessionIdentity, token, cod
 			return ErrWalletPasswordFlowInvalid
 		}
 		var state walletPasswordFlowState
-		if err := common.UnmarshalJsonStr(flow.Payload, &state); err != nil || state.CodeHash == "" || state.FailedAttempts >= WalletPasswordMaxAttempts {
+		if err := common.UnmarshalJsonStr(flow.Payload, &state); err != nil || (state.CodeHash == "" && !state.EmailExempt) || state.FailedAttempts >= WalletPasswordMaxAttempts {
 			return ErrWalletPasswordFlowLocked
 		}
 		if err := ValidateAuthSessionWithTx(tx, identity); err != nil {
 			return err
 		}
 		var user User
-		if err := tx.Select("email").First(&user, identity.UserID).Error; err != nil {
+		if err := tx.Select("email", "role").First(&user, identity.UserID).Error; err != nil {
 			return err
 		}
-		if NormalizeEmail(user.Email) != state.Email {
+		if NormalizeEmail(user.Email) != state.Email || state.EmailExempt != walletPasswordEmailExempt(&user) {
 			return ErrEmailBindingRequired
+		}
+		if state.EmailExempt {
+			return nil
 		}
 		numericCode, codeErr := common.ValidateNumericCode(code)
 		if codeErr == nil && common.ValidatePasswordAndHash(numericCode, state.CodeHash) {
@@ -693,7 +723,7 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 			return err
 		}
 		var sender User
-		if err := tx.Select("id", "username", "display_name", "password", "status", "quota").First(&sender, identity.UserID).Error; err != nil {
+		if err := tx.Select("id", "username", "display_name", "password", "status", "quota", "role").First(&sender, identity.UserID).Error; err != nil {
 			return err
 		}
 		senderId = sender.Id
@@ -718,7 +748,11 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		if err := tx.Model(&WalletTransferAttempt{}).Where("user_id = ? AND date_key = ?", sender.Id, dateKey).Count(&attempts).Error; err != nil {
 			return err
 		}
-		if attempts >= attemptLimit {
+		// The root user can already grant balance directly, so neither the
+		// attempt limit nor the daily amount cap applies to it. Password and
+		// 2FA lockouts still do.
+		limitsExempt := sender.Role == common.RoleRootUser
+		if !limitsExempt && attempts >= attemptLimit {
 			outcome = ErrWalletTransferAttemptLimit
 			return nil
 		}
@@ -775,7 +809,7 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 				return nil
 			}
 		}
-		if twoFAErr != nil {
+		if twoFAErr != nil && !limitsExempt {
 			var used int64
 			if err := tx.Model(&WalletTransfer{}).Where("sender_id = ? AND date_key = ?", sender.Id, dateKey).Select("COALESCE(SUM(amount), 0)").Scan(&used).Error; err != nil {
 				return err

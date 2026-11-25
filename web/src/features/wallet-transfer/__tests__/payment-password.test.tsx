@@ -17,15 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
-import { WalletTransferPasswordDialog } from '../components/dialogs/wallet-transfer-password-dialog'
+import { PaymentPasswordDialog } from '../components/payment-password-dialog'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 it('requires login password and 2FA when resetting a payment password', async () => {
   const get = vi.spyOn(api, 'get').mockResolvedValue({
@@ -73,7 +76,7 @@ it('requires login password and 2FA when resetting a payment password', async ()
 
   render(
     <QueryClientProvider client={client}>
-      <WalletTransferPasswordDialog open onOpenChange={onOpenChange} />
+      <PaymentPasswordDialog open onOpenChange={onOpenChange} />
     </QueryClientProvider>
   )
 
@@ -129,4 +132,89 @@ it('requires login password and 2FA when resetting a payment password', async ()
   )
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   expect(get).toHaveBeenCalledWith('/api/user/wallet-transfer/status')
+})
+
+it('lets a super administrator without an email set a payment password with the login password only', async () => {
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        has_login_password: true,
+        has_email: false,
+        email_exempt: true,
+        email: '',
+        has_payment_password: false,
+        two_fa_enabled: false,
+        attempt_count: 0,
+        attempt_limit: 10,
+        fee_percent: '0.00',
+        used_quota: 0,
+        daily_limit_quota: 100,
+        daily_limit_amount: 100,
+        display_type: 'USD',
+        display_symbol: '$',
+      },
+    },
+  })
+  const post = vi.spyOn(api, 'post').mockImplementation(async (url) => {
+    if (url === '/api/user/wallet-transfer/password/start') {
+      return {
+        data: {
+          success: true,
+          data: {
+            flow_token: 'root-flow',
+            email: '',
+            email_exempt: true,
+            expires_at: Math.floor(Date.now() / 1000) + 600,
+          },
+        },
+      }
+    }
+    return { data: { success: true, data: { success: true } } }
+  })
+  const onOpenChange = vi.fn()
+  const user = userEvent.setup()
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <PaymentPasswordDialog open onOpenChange={onOpenChange} />
+    </QueryClientProvider>
+  )
+
+  await user.click(await screen.findByRole('button', { name: 'Continue' }))
+
+  expect(await screen.findByLabelText('Login password')).toBeVisible()
+  expect(
+    screen.queryByLabelText('Email verification code')
+  ).not.toBeInTheDocument()
+
+  await user.type(screen.getByLabelText('Login password'), 'login-secret')
+  await user.type(
+    screen.getByLabelText('New payment password'),
+    'root wallet passphrase'
+  )
+  await user.type(
+    screen.getByLabelText('Confirm new payment password'),
+    'root wallet passphrase'
+  )
+  await user.click(
+    screen.getByRole('button', { name: 'Save payment password' })
+  )
+
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith(
+      '/api/user/wallet-transfer/password/complete',
+      {
+        flow_token: 'root-flow',
+        code: '',
+        new_password: 'root wallet passphrase',
+        login_password: 'login-secret',
+      },
+      { singleUseAuthorization: true }
+    )
+  )
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
 })

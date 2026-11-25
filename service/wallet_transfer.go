@@ -14,7 +14,9 @@ import (
 type WalletTransferPasswordFlow struct {
 	FlowToken string `json:"flow_token"`
 	Email     string `json:"email"`
-	ExpiresAt int64  `json:"expires_at"`
+	// EmailExempt is true for the root user without a bound email: no code was sent.
+	EmailExempt bool  `json:"email_exempt"`
+	ExpiresAt   int64 `json:"expires_at"`
 }
 
 var ErrWalletTransferPasswordEmailDelivery = errors.New("Verification email could not be sent. Start again.")
@@ -30,6 +32,9 @@ func StartWalletTransferPasswordFlow(identity AuthIdentity, intent, language str
 	token, expiresAt, email, err := model.CreateWalletTransferPasswordFlow(identity, intent, codes.NewHash)
 	if err != nil {
 		return nil, err
+	}
+	if email == "" {
+		return &WalletTransferPasswordFlow{FlowToken: token, EmailExempt: true, ExpiresAt: expiresAt.Unix()}, nil
 	}
 	if err := sendWalletTransferPasswordCode(language, email, codes.New); err != nil {
 		_, _ = model.ConsumeAuthFlow(token, model.AuthFlowMatch{

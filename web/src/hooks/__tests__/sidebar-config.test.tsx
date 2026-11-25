@@ -194,6 +194,20 @@ describe('model availability sidebar entry', () => {
   )
 })
 
+describe('balance transfer inside the wallet', () => {
+  it('has no sidebar entry of its own and keeps Wallet highlighted', () => {
+    const { result } = sidebarFor()
+    const items = result.current.flatMap((group) => group.items)
+
+    expect(items.map((item) => item.title)).not.toContain('Balance transfer')
+    expect(
+      items
+        .filter((item) => checkIsActive('/wallet/transfer', item))
+        .map((item) => item.title)
+    ).toEqual(['Wallet'])
+  })
+})
+
 describe('audit log sidebar entry', () => {
   it('admin settings default Audit Logs to visible and preserve its independent toggle when saved', () => {
     const config = parseSidebarModulesAdmin(

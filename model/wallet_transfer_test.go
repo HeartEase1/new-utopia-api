@@ -115,11 +115,11 @@ func TestWalletTransferRequiresFreshTOTPAndCapsFailedSubmissions(t *testing.T) {
 	missingPasswordSender, missingPasswordIdentity, _, _ := createWalletTransferTestAccount(t, "attempt-sender", 100, false)
 	attemptRecipient, _, _, _ := createWalletTransferTestAccount(t, "attempt-recipient", 0, false)
 	for range 10 {
-		quote := createWalletTransferTestQuote(t, missingPasswordIdentity, attemptRecipient.Id, 1, 0)
+		quote := createWalletTransferTestQuote(t, missingPasswordIdentity, attemptRecipient.Id, 10, 0)
 		_, err := ConfirmWalletTransfer(missingPasswordIdentity, WalletTransferSubmit{QuoteToken: quote.QuoteToken})
 		assert.ErrorIs(t, err, ErrWalletTransferPasswordRequired)
 	}
-	lastQuote := createWalletTransferTestQuote(t, missingPasswordIdentity, attemptRecipient.Id, 1, 0)
+	lastQuote := createWalletTransferTestQuote(t, missingPasswordIdentity, attemptRecipient.Id, 10, 0)
 	_, err = ConfirmWalletTransfer(missingPasswordIdentity, WalletTransferSubmit{QuoteToken: lastQuote.QuoteToken})
 	assert.ErrorIs(t, err, ErrWalletTransferAttemptLimit)
 	var attemptCount int64
@@ -143,6 +143,34 @@ func TestWalletTransferDailyCapAndTOTPExemption(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, ErrWalletTransferDailyLimit)
 	assert.Equal(t, 100, getUserQuotaFromDB(t, sender.Id))
+
+	// An administrator is limited like everyone else; only the root user is not.
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", sender.Id).Update("role", common.RoleAdminUser).Error)
+	limitedQuote := createWalletTransferTestQuote(t, identity, recipient.Id, 11, 0)
+	_, err = ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: limitedQuote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
+	})
+	assert.ErrorIs(t, err, ErrWalletTransferDailyLimit)
+	require.NoError(t, DB.Where("user_id = ?", sender.Id).Delete(&WalletTransferAttempt{}).Error)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", sender.Id).Update("role", common.RoleRootUser).Error)
+
+	// One transfer sends at least one display unit: a hundredth of the daily cap.
+	_, err = CreateWalletTransferQuote(identity, recipient.Id, 9, 0, 1_000, 100, "USD", "$ ")
+	assert.ErrorIs(t, err, ErrWalletTransferBelowMinimum)
+	for i := range 10 {
+		require.NoError(t, DB.Create(&WalletTransferAttempt{
+			QuoteFlowId: int64(710000 + i), UserId: sender.Id, DateKey: walletTransferDateKey(now), Quota: 1, SubmittedAt: now,
+		}).Error)
+	}
+	adminQuote := createWalletTransferTestQuote(t, identity, recipient.Id, 11, 0)
+	_, err = ConfirmWalletTransfer(identity, WalletTransferSubmit{
+		QuoteToken: adminQuote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 89, getUserQuotaFromDB(t, sender.Id))
+	adminStatus, err := GetWalletTransferStatus(sender.Id, 1_000, "USD", "$ ")
+	require.NoError(t, err)
+	assert.True(t, adminStatus.LimitsExempt)
 
 	secureSender, secureIdentity, secureLoginPassword, securePaymentPassword := createWalletTransferTestAccount(t, "secure-sender", 100, true)
 	secureRecipient, _, _, _ := createWalletTransferTestAccount(t, "secure-recipient", 0, false)
@@ -275,7 +303,7 @@ func TestWalletTransferRejectsInsufficientBalanceAndPrunesOnlyShortLivedState(t 
 	prepareWalletTransferTest(t)
 	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "poor-sender", 5, true)
 	recipient, _, _, _ := createWalletTransferTestAccount(t, "poor-recipient", 0, false)
-	quote := createWalletTransferTestQuote(t, identity, recipient.Id, 6, 0)
+	quote := createWalletTransferTestQuote(t, identity, recipient.Id, 10, 0)
 	_, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{
 		QuoteToken: quote.QuoteToken, LoginPassword: loginPassword, PaymentPassword: paymentPassword,
 	})
@@ -347,6 +375,42 @@ func TestWalletTransferPaymentPasswordFlowRequiresEmailCodeAndIsSingleUse(t *tes
 
 	err = CompleteWalletTransferPasswordFlow(identity, rotatedToken, "119385", "", loginPassword, "", newPassword, newPasswordHash)
 	assert.ErrorIs(t, err, ErrWalletPasswordFlowInvalid)
+}
+
+func TestWalletTransferPaymentPasswordEmailIsWaivedOnlyForRootWithoutEmail(t *testing.T) {
+	prepareWalletTransferTest(t)
+	user, identity, loginPassword, _ := createWalletTransferTestAccount(t, "password-no-email", 0, false)
+	require.NoError(t, DB.AutoMigrate(&AuthFlow{}, &User{}, &UserSession{}))
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("email", "").Error)
+	codeHash := mustWalletPasswordHash(t, "271828")
+	newPassword := "root wallet passphrase"
+	newPasswordHash, err := common.HashAccountPassword(newPassword)
+	require.NoError(t, err)
+
+	_, _, _, err = CreateWalletTransferPasswordFlow(identity, "set", codeHash)
+	assert.ErrorIs(t, err, ErrEmailBindingRequired, "an ordinary user must bind an email")
+
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("role", common.RoleRootUser).Error)
+	token, _, email, err := CreateWalletTransferPasswordFlow(identity, "set", codeHash)
+	require.NoError(t, err)
+	assert.Empty(t, email)
+	status, err := GetWalletTransferStatus(user.Id, 1_000, "USD", "$ ")
+	require.NoError(t, err)
+	assert.True(t, status.EmailExempt)
+
+	// The login password is still required, and the waiver ends with the root role.
+	require.NoError(t, ValidateWalletTransferPasswordCode(identity, token, ""))
+	err = CompleteWalletTransferPasswordFlow(identity, token, "", "", "wrong login password", "", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrWalletTransferLoginInvalid)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("role", common.RoleAdminUser).Error)
+	err = CompleteWalletTransferPasswordFlow(identity, token, "", "", loginPassword, "", newPassword, newPasswordHash)
+	assert.ErrorIs(t, err, ErrEmailBindingRequired)
+
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("role", common.RoleRootUser).Error)
+	require.NoError(t, CompleteWalletTransferPasswordFlow(identity, token, "", "", loginPassword, "", newPassword, newPasswordHash))
+	var security WalletSecurity
+	require.NoError(t, DB.Where("user_id = ?", user.Id).First(&security).Error)
+	assert.True(t, common.ValidatePasswordAndHash(newPassword, security.PasswordHash))
 }
 
 func TestWalletTransferPaymentPasswordMustDifferFromLoginAndCurrentPassword(t *testing.T) {

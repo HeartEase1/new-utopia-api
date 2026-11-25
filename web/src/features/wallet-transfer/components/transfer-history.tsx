@@ -28,24 +28,24 @@ import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  getAdminWalletTransfers,
+  getWalletTransferHistory,
+} from '@/features/wallet/api'
+import type { WalletTransferRecord } from '@/features/wallet/types'
 import { useDebounce } from '@/hooks/use-debounce'
 import { formatTimestampToDate, formatQuota } from '@/lib/format'
 
-import { getAdminWalletTransfers, getWalletTransferHistory } from '../../api'
-import type { WalletTransferRecord } from '../../types'
-
-interface WalletTransferHistoryDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+interface TransferHistoryProps {
   currentUserId: number
+  /** Every user's transfers with search, date filter and fee total. */
   adminView?: boolean
+  enabled?: boolean
 }
 
 const pageSize = 20
 
-export function WalletTransferHistoryDialog(
-  props: WalletTransferHistoryDialogProps
-) {
+export function TransferHistory(props: TransferHistoryProps) {
   const { t } = useTranslation()
   const isAdmin = props.adminView === true
   const [page, setPage] = useState(1)
@@ -65,7 +65,7 @@ export function WalletTransferHistoryDialog(
       isAdmin
         ? getAdminWalletTransfers(page, pageSize, debouncedKeyword.trim(), date)
         : getWalletTransferHistory(page, pageSize),
-    enabled: props.open,
+    enabled: props.enabled ?? true,
     staleTime: 0,
     meta: { errorToast: false },
   })
@@ -178,132 +178,141 @@ export function WalletTransferHistoryDialog(
   }
 
   return (
-    <Dialog
-      open={props.open}
-      onOpenChange={props.onOpenChange}
-      title={
-        isAdmin ? t('Wallet transfer reconciliation') : t('Transfer history')
-      }
-      description={
-        isAdmin
-          ? t(
-              'Review completed transfers, users, amounts, fees, and received balances.'
-            )
-          : t(
-              'Review the sender or recipient, transfer amount, fee, and credited amount.'
-            )
-      }
-      contentClassName='max-h-[calc(100dvh-1rem)] max-sm:w-[calc(100vw-1rem)] sm:max-w-4xl'
-      bodyClassName='space-y-4'
-    >
-      <div className='space-y-4 py-2'>
-        {isAdmin ? (
-          <div className='grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]'>
-            <div className='space-y-1.5'>
-              <Label htmlFor='wallet-transfer-history-search'>
-                {t('Search users')}
-              </Label>
-              <div className='relative'>
-                <Search className='text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2' />
-                <Input
-                  id='wallet-transfer-history-search'
-                  value={keyword}
-                  onChange={(event) => {
-                    setKeyword(event.target.value)
-                    resetPage()
-                  }}
-                  placeholder={t('Search by user ID or username')}
-                  className='pl-9'
-                />
-              </div>
-            </div>
-            <div className='space-y-1.5'>
-              <Label htmlFor='wallet-transfer-history-date'>
-                {t('Filter by date')}
-              </Label>
+    <div className='space-y-4'>
+      {isAdmin ? (
+        <div className='grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]'>
+          <div className='space-y-1.5'>
+            <Label htmlFor='wallet-transfer-history-search'>
+              {t('Search users')}
+            </Label>
+            <div className='relative'>
+              <Search className='text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2' />
               <Input
-                id='wallet-transfer-history-date'
-                type='date'
-                value={date}
+                id='wallet-transfer-history-search'
+                value={keyword}
                 onChange={(event) => {
-                  setDate(event.target.value)
+                  setKeyword(event.target.value)
                   resetPage()
                 }}
+                placeholder={t('Search by user ID or username')}
+                className='pl-9'
               />
             </div>
           </div>
-        ) : null}
-
-        {isAdmin ? (
-          <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm'>
-            <span className='text-muted-foreground'>
-              {t('Total transfer fees in current results')}
-            </span>
-            <span className='font-semibold tabular-nums'>
-              {formatQuota(totalFees)}
-            </span>
+          <div className='space-y-1.5'>
+            <Label htmlFor='wallet-transfer-history-date'>
+              {t('Filter by date')}
+            </Label>
+            <Input
+              id='wallet-transfer-history-date'
+              type='date'
+              value={date}
+              onChange={(event) => {
+                setDate(event.target.value)
+                resetPage()
+              }}
+            />
           </div>
-        ) : null}
-
-        <div className='max-h-[min(58vh,560px)] space-y-3 overflow-y-auto pr-1'>
-          {historyQuery.isLoading ? (
-            <LoadingState
-              className='min-h-40'
-              message={t('Loading transfer history...')}
-            />
-          ) : null}
-          {historyQuery.isError ? (
-            <ErrorState
-              className='min-h-40'
-              title={t('Could not load transfer history')}
-              onRetry={() => void historyQuery.refetch()}
-            />
-          ) : null}
-          {!historyQuery.isLoading &&
-          !historyQuery.isError &&
-          records.length === 0 ? (
-            <EmptyState
-              className='min-h-40'
-              title={t('No transfer records found')}
-              description={t('Completed transfers will appear here.')}
-            />
-          ) : null}
-          {records.map(renderRecord)}
         </div>
+      ) : null}
 
-        {records.length > 0 ? (
-          <div className='flex items-center justify-between border-t pt-3'>
-            <p className='text-muted-foreground text-xs'>
-              {t('Showing')} {(page - 1) * pageSize + 1}–
-              {Math.min(page * pageSize, total)} {t('of')} {total}
-            </p>
-            <div className='flex items-center gap-2'>
-              <Button
-                variant='outline'
-                size='icon-sm'
-                aria-label={t('Previous page')}
-                disabled={page <= 1 || historyQuery.isFetching}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                <ChevronLeft className='size-4' />
-              </Button>
-              <span className='text-muted-foreground text-xs tabular-nums'>
-                {page} / {totalPages}
-              </span>
-              <Button
-                variant='outline'
-                size='icon-sm'
-                aria-label={t('Next page')}
-                disabled={page >= totalPages || historyQuery.isFetching}
-                onClick={() =>
-                  setPage((current) => Math.min(totalPages, current + 1))
-                }
-              >
-                <ChevronRight className='size-4' />
-              </Button>
-            </div>
-          </div>
+      {isAdmin ? (
+        <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm'>
+          <span className='text-muted-foreground'>
+            {t('Total transfer fees in current results')}
+          </span>
+          <span className='font-semibold tabular-nums'>
+            {formatQuota(totalFees)}
+          </span>
+        </div>
+      ) : null}
+
+      <div className='space-y-3'>
+        {historyQuery.isLoading ? (
+          <LoadingState
+            className='min-h-40'
+            message={t('Loading transfer history...')}
+          />
         ) : null}
+        {historyQuery.isError ? (
+          <ErrorState
+            className='min-h-40'
+            title={t('Could not load transfer history')}
+            onRetry={() => void historyQuery.refetch()}
+          />
+        ) : null}
+        {!historyQuery.isLoading &&
+        !historyQuery.isError &&
+        records.length === 0 ? (
+          <EmptyState
+            className='min-h-40'
+            title={t('No transfer records found')}
+            description={t('Completed transfers will appear here.')}
+          />
+        ) : null}
+        {records.map(renderRecord)}
+      </div>
+
+      {records.length > 0 ? (
+        <div className='flex items-center justify-between border-t pt-3'>
+          <p className='text-muted-foreground text-xs'>
+            {t('Showing')} {(page - 1) * pageSize + 1}–
+            {Math.min(page * pageSize, total)} {t('of')} {total}
+          </p>
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='outline'
+              size='icon-sm'
+              aria-label={t('Previous page')}
+              disabled={page <= 1 || historyQuery.isFetching}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              <ChevronLeft className='size-4' />
+            </Button>
+            <span className='text-muted-foreground text-xs tabular-nums'>
+              {page} / {totalPages}
+            </span>
+            <Button
+              variant='outline'
+              size='icon-sm'
+              aria-label={t('Next page')}
+              disabled={page >= totalPages || historyQuery.isFetching}
+              onClick={() =>
+                setPage((current) => Math.min(totalPages, current + 1))
+              }
+            >
+              <ChevronRight className='size-4' />
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** The reconciliation view for administrators, in a dialog. */
+export function TransferReconciliationDialog(props: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  currentUserId: number
+}) {
+  const { t } = useTranslation()
+  return (
+    <Dialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      title={t('Wallet transfer reconciliation')}
+      description={t(
+        'Review completed transfers, users, amounts, fees, and received balances.'
+      )}
+      contentClassName='max-h-[calc(100dvh-1rem)] max-sm:w-[calc(100vw-1rem)] sm:max-w-4xl'
+    >
+      <div className='max-h-[min(70vh,640px)] overflow-y-auto py-2 pr-1'>
+        <TransferHistory
+          currentUserId={props.currentUserId}
+          adminView
+          enabled={props.open}
+        />
       </div>
     </Dialog>
   )

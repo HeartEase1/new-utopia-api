@@ -59,6 +59,7 @@ func GetWalletTransferStatus(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	status.FeePercent = strconv.FormatFloat(operation_setting.GetPaymentSetting().WalletTransferFeePercent, 'f', 2, 64)
 	common.ApiSuccess(c, status)
 }
 
@@ -180,7 +181,9 @@ func CompleteWalletTransferPasswordFlow(c *gin.Context) {
 	notificationFailed := false
 	if err == nil {
 		user, userErr := model.GetUserById(identity.UserID, false)
-		if userErr != nil || service.NotifyAccountSecurityChange(service.AccountMailLanguage(c, identity.UserID), user.Email, i18n.MsgSecurityEventPasswordUpdated) != nil {
+		if userErr != nil {
+			notificationFailed = true
+		} else if user.Email != "" && service.NotifyAccountSecurityChange(service.AccountMailLanguage(c, identity.UserID), user.Email, i18n.MsgSecurityEventPasswordUpdated) != nil {
 			notificationFailed = true
 		}
 	}
@@ -224,7 +227,7 @@ func parseOptionalWalletTransferUserId(value string) (int, error) {
 
 func writeWalletTransferError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, model.ErrWalletTransferInvalid), errors.Is(err, model.ErrWalletTransferQuoteInvalid), errors.Is(err, model.ErrWalletPasswordFlowInvalid), errors.Is(err, model.ErrWalletPasswordCodeInvalid), errors.Is(err, model.ErrWalletPasswordSameAsLogin), errors.Is(err, model.ErrWalletPasswordUnchanged), errors.Is(err, common.ErrAccountPasswordLength), errors.Is(err, common.ErrPasswordTooCommon), errors.Is(err, common.ErrPasswordLegacyLimit):
+	case errors.Is(err, model.ErrWalletTransferInvalid), errors.Is(err, model.ErrWalletTransferBelowMinimum), errors.Is(err, model.ErrWalletTransferQuoteInvalid), errors.Is(err, model.ErrWalletPasswordFlowInvalid), errors.Is(err, model.ErrWalletPasswordCodeInvalid), errors.Is(err, model.ErrWalletPasswordSameAsLogin), errors.Is(err, model.ErrWalletPasswordUnchanged), errors.Is(err, common.ErrAccountPasswordLength), errors.Is(err, common.ErrPasswordTooCommon), errors.Is(err, common.ErrPasswordLegacyLimit):
 		common.ApiErrorStatus(c, http.StatusBadRequest, err)
 	case errors.Is(err, service.ErrWalletTransferPasswordEmailDelivery):
 		common.ApiErrorStatus(c, http.StatusBadGateway, err)

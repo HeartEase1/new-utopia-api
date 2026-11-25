@@ -32,22 +32,21 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useCountdown } from '@/hooks/use-countdown'
-import { handleServerError } from '@/lib/handle-server-error'
-import { accountPasswordSchema } from '@/lib/password-policy'
-
 import {
   completeWalletTransferPasswordFlow,
   getWalletTransferStatus,
   startWalletTransferPasswordFlow,
-} from '../../api'
-import type { WalletTransferPasswordFlow } from '../../types'
+} from '@/features/wallet/api'
+import type { WalletTransferPasswordFlow } from '@/features/wallet/types'
+import { useCountdown } from '@/hooks/use-countdown'
+import { handleServerError } from '@/lib/handle-server-error'
+import { accountPasswordSchema } from '@/lib/password-policy'
 
 type PasswordIntent = 'set' | 'change' | 'reset'
 
 const formSchema = z
   .object({
-    code: z.string().regex(/^\d{6}$/, 'Please enter the 6-digit code.'),
+    code: z.string(),
     currentPassword: z.string(),
     loginPassword: z.string(),
     twoFACode: z.string(),
@@ -61,15 +60,13 @@ const formSchema = z
 
 type PasswordFormValues = z.infer<typeof formSchema>
 
-interface WalletTransferPasswordDialogProps {
+interface PaymentPasswordDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   intent?: 'set' | 'change'
 }
 
-export function WalletTransferPasswordDialog(
-  props: WalletTransferPasswordDialogProps
-) {
+export function PaymentPasswordDialog(props: PaymentPasswordDialogProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const statusQuery = useQuery({
@@ -132,9 +129,10 @@ export function WalletTransferPasswordDialog(
   }
 
   // Setting or resetting is confirmed with the login password.
+  // The root user without a bound email skips the email step.
+  const emailReady = status?.has_email === true || status?.email_exempt === true
   const canStart =
-    status?.has_email === true &&
-    (intent === 'change' || status.has_login_password)
+    emailReady && (intent === 'change' || status?.has_login_password === true)
 
   const handleSendCode = async () => {
     if (!canStart || sending || isActive) return
@@ -143,8 +141,10 @@ export function WalletTransferPasswordDialog(
       const result = await startWalletTransferPasswordFlow(intent)
       form.reset()
       setFlow(result)
-      startCountdown(60)
-      toast.success(t('Verification email sent'))
+      if (!result.email_exempt) {
+        startCountdown(60)
+        toast.success(t('Verification email sent'))
+      }
     } catch (error) {
       handleServerError(error, t('Failed to send verification email'))
     } finally {
@@ -158,6 +158,13 @@ export function WalletTransferPasswordDialog(
       setFlow(null)
       form.reset()
       toast.error(t('This verification flow has expired. Start again.'))
+      return
+    }
+    if (!flow.email_exempt && !/^\d{6}$/.test(values.code)) {
+      form.setError('code', {
+        type: 'manual',
+        message: 'Please enter the 6-digit code.',
+      })
       return
     }
     if (intent === 'change' && !values.currentPassword) {
@@ -228,6 +235,19 @@ export function WalletTransferPasswordDialog(
     ) : null
   }
 
+  let startPrompt = t(
+    'Bind an email address before managing the payment password.'
+  )
+  if (status?.email_exempt) {
+    startPrompt = t(
+      'As the super administrator you can manage the payment password without binding an email.'
+    )
+  } else if (status?.has_email) {
+    startPrompt = t('We will send a one-time code to {{email}}.', {
+      email: status.email,
+    })
+  }
+
   let resendAction: ReactNode
   if (sending) {
     resendAction = <Loader2 className='size-4 animate-spin' />
@@ -277,7 +297,9 @@ export function WalletTransferPasswordDialog(
               ) : (
                 <MailCheck className='mr-2 size-4' />
               )}
-              {t('Send verification code')}
+              {status?.email_exempt
+                ? t('Continue')
+                : t('Send verification code')}
             </Button>
           )}
         </div>
@@ -296,7 +318,7 @@ export function WalletTransferPasswordDialog(
             onRetry={() => void statusQuery.refetch()}
           />
         ) : null}
-        {status && !status.has_email ? (
+        {status && !emailReady ? (
           <Alert variant='destructive'>
             <AlertDescription>
               {t('Bind an email address before managing the payment password.')}
@@ -325,8 +347,8 @@ export function WalletTransferPasswordDialog(
           </div>
         ) : null}
 
-        {status?.has_email &&
-        !status.has_login_password &&
+        {emailReady &&
+        status?.has_login_password === false &&
         intent !== 'change' ? (
           <Alert variant='destructive'>
             <AlertDescription>
@@ -364,35 +386,39 @@ export function WalletTransferPasswordDialog(
             onSubmit={handleSubmit}
             noValidate
           >
-            <p className='text-muted-foreground text-sm'>
-              {t('A verification code was sent to {{email}}.', {
-                email: flow.email,
-              })}
-            </p>
-            <div className='space-y-1.5'>
-              <div className='flex items-center justify-between gap-2'>
-                <Label htmlFor='wallet-password-code'>
-                  {t('Email verification code')}
-                </Label>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='ghost'
-                  disabled={sending || isActive}
-                  onClick={handleSendCode}
-                >
-                  {resendAction}
-                </Button>
-              </div>
-              <Input
-                id='wallet-password-code'
-                autoComplete='one-time-code'
-                inputMode='numeric'
-                maxLength={6}
-                {...form.register('code')}
-              />
-              {errorText('code')}
-            </div>
+            {flow.email_exempt ? null : (
+              <>
+                <p className='text-muted-foreground text-sm'>
+                  {t('A verification code was sent to {{email}}.', {
+                    email: flow.email,
+                  })}
+                </p>
+                <div className='space-y-1.5'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <Label htmlFor='wallet-password-code'>
+                      {t('Email verification code')}
+                    </Label>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='ghost'
+                      disabled={sending || isActive}
+                      onClick={handleSendCode}
+                    >
+                      {resendAction}
+                    </Button>
+                  </div>
+                  <Input
+                    id='wallet-password-code'
+                    autoComplete='one-time-code'
+                    inputMode='numeric'
+                    maxLength={6}
+                    {...form.register('code')}
+                  />
+                  {errorText('code')}
+                </div>
+              </>
+            )}
 
             {intent === 'change' ? (
               <div className='space-y-1.5'>
@@ -467,15 +493,7 @@ export function WalletTransferPasswordDialog(
             </div>
           </form>
         ) : (
-          <p className='text-muted-foreground text-sm'>
-            {status?.has_email
-              ? t('We will send a one-time code to {{email}}.', {
-                  email: status.email,
-                })
-              : t(
-                  'Bind an email address before managing the payment password.'
-                )}
-          </p>
+          <p className='text-muted-foreground text-sm'>{startPrompt}</p>
         )}
       </div>
     </Dialog>

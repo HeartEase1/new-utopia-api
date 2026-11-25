@@ -16,28 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ArrowLeftRight, History, ReceiptText } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowLeftRight, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 
-interface WalletTransferCardProps {
-  onTransfer: () => void
-  onHistory: () => void
-  onManagePassword: () => void
-  onReconciliation?: () => void
-}
-
-export function WalletTransferCard(props: WalletTransferCardProps) {
+/** Entry to the balance transfer page. */
+export function WalletTransferCard() {
   const { t } = useTranslation()
 
   return (
-    <Card data-card-hover='false' className='bg-muted/20 py-0'>
+    <Card
+      data-card-hover='false'
+      className='border-primary/30 bg-primary/5 py-0'
+    >
       <CardContent className='flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4'>
         <div className='flex min-w-0 items-center gap-3'>
           <div className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg'>
-            <ArrowLeftRight className='size-5' />
+            <ArrowLeftRight className='size-5' aria-hidden='true' />
           </div>
           <div className='min-w-0'>
             <h3 className='text-sm font-semibold'>{t('Balance transfer')}</h3>
@@ -48,29 +46,10 @@ export function WalletTransferCard(props: WalletTransferCardProps) {
             </p>
           </div>
         </div>
-        <div className='flex flex-wrap gap-2'>
-          <Button variant='outline' size='sm' onClick={props.onManagePassword}>
-            {t('Payment password')}
-          </Button>
-          <Button variant='outline' size='sm' onClick={props.onHistory}>
-            <History className='mr-2 size-4' />
-            {t('Transfer history')}
-          </Button>
-          {props.onReconciliation && (
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={props.onReconciliation}
-            >
-              <ReceiptText className='mr-2 size-4' />
-              {t('Reconciliation')}
-            </Button>
-          )}
-          <Button size='sm' onClick={props.onTransfer}>
-            <ArrowLeftRight className='mr-2 size-4' />
-            {t('Transfer balance')}
-          </Button>
-        </div>
+        <Button size='sm' render={<Link to='/wallet/transfer' />}>
+          {t('Open balance transfer')}
+          <ChevronRight data-icon='inline-end' />
+        </Button>
       </CardContent>
     </Card>
   )

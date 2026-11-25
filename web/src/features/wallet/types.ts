@@ -261,14 +261,22 @@ export interface WalletTransferRecipient {
 export interface WalletTransferStatus {
   has_login_password: boolean
   has_email: boolean
+  /** The root user without a bound email skips email verification. */
+  email_exempt: boolean
+  /** The root user has no daily amount cap or attempt limit. */
+  limits_exempt: boolean
   email: string
   has_payment_password: boolean
   two_fa_enabled: boolean
   attempt_count: number
   attempt_limit: number
+  /** Transfer fee percentage with two decimals, for example "1.50". */
+  fee_percent: string
   used_quota: number
   daily_limit_quota: number
   daily_limit_amount: number
+  /** The smallest amount one transfer may send, in quota units. */
+  min_quota: number
   display_type: string
   display_symbol: string
 }
@@ -311,6 +319,7 @@ export interface WalletTransferRecord {
 export interface WalletTransferPasswordFlow {
   flow_token: string
   email: string
+  email_exempt?: boolean
   expires_at: number
 }
 

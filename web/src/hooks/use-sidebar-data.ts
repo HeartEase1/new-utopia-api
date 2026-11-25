@@ -121,6 +121,7 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
           {
             title: t('Wallet'),
             url: '/wallet',
+            activeUrls: ['/wallet/transfer'],
             icon: Wallet,
           },
           {

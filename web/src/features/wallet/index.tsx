@@ -17,11 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
+import { ArrowLeftRight } from 'lucide-react'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
-import { useIsAdmin } from '@/hooks/use-admin'
+import { Button } from '@/components/ui/button'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
@@ -33,9 +35,6 @@ import { BillingHistoryDialog } from './components/dialogs/billing-history-dialo
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
-import { WalletTransferDialog } from './components/dialogs/wallet-transfer-dialog'
-import { WalletTransferHistoryDialog } from './components/dialogs/wallet-transfer-history-dialog'
-import { WalletTransferPasswordDialog } from './components/dialogs/wallet-transfer-password-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { RedemptionCard } from './components/redemption-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
@@ -82,14 +81,6 @@ export function Wallet(props: WalletProps) {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
-  const [walletTransferOpen, setWalletTransferOpen] = useState(false)
-  const [walletTransferHistoryOpen, setWalletTransferHistoryOpen] =
-    useState(false)
-  const [walletTransferAdminView, setWalletTransferAdminView] = useState(false)
-  const [walletPasswordOpen, setWalletPasswordOpen] = useState(false)
-  const [walletPasswordIntent, setWalletPasswordIntent] = useState<
-    'set' | 'change' | undefined
-  >()
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
@@ -105,7 +96,6 @@ export function Wallet(props: WalletProps) {
   })
 
   const { status } = useStatus()
-  const isAdmin = useIsAdmin()
   const { currency } = useSystemConfig()
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
 
@@ -309,9 +299,17 @@ export function Wallet(props: WalletProps) {
     <>
       <SectionPageLayout>
         <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <Button render={<Link to='/wallet/transfer' />}>
+            <ArrowLeftRight data-icon='inline-start' />
+            {t('Balance transfer')}
+          </Button>
+        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
             <WalletStatsCard user={user} loading={userLoading} />
+
+            <WalletTransferCard />
 
             <div className='grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] xl:items-start'>
               <div id='wallet-add-funds' className='min-w-0 scroll-mt-4'>
@@ -360,26 +358,6 @@ export function Wallet(props: WalletProps) {
               enabled={topupInfo?.show_subscription_plans !== false}
             />
 
-            <WalletTransferCard
-              onTransfer={() => setWalletTransferOpen(true)}
-              onHistory={() => {
-                setWalletTransferAdminView(false)
-                setWalletTransferHistoryOpen(true)
-              }}
-              onManagePassword={() => {
-                setWalletPasswordIntent(undefined)
-                setWalletPasswordOpen(true)
-              }}
-              onReconciliation={
-                isAdmin
-                  ? () => {
-                      setWalletTransferAdminView(true)
-                      setWalletTransferHistoryOpen(true)
-                    }
-                  : undefined
-              }
-            />
-
             <AffiliateRewardsCard
               user={user}
               affiliateLink={affiliateLink}
@@ -417,32 +395,6 @@ export function Wallet(props: WalletProps) {
         onConfirm={handleTransfer}
         availableQuota={user?.aff_quota ?? 0}
         transferring={transferring}
-      />
-
-      <WalletTransferDialog
-        open={walletTransferOpen}
-        onOpenChange={setWalletTransferOpen}
-        availableQuota={user?.quota ?? 0}
-        onSetPaymentPassword={(intent) => {
-          setWalletPasswordIntent(intent === 'set' ? 'set' : 'change')
-          setWalletPasswordOpen(true)
-        }}
-        onTransferred={async () => {
-          await fetchUser()
-        }}
-      />
-
-      <WalletTransferHistoryDialog
-        open={walletTransferHistoryOpen}
-        onOpenChange={setWalletTransferHistoryOpen}
-        currentUserId={user?.id ?? 0}
-        adminView={walletTransferAdminView}
-      />
-
-      <WalletTransferPasswordDialog
-        open={walletPasswordOpen}
-        onOpenChange={setWalletPasswordOpen}
-        intent={walletPasswordIntent}
       />
 
       <BillingHistoryDialog
