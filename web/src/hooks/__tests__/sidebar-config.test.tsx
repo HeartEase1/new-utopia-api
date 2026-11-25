@@ -141,6 +141,44 @@ describe('security sidebar visibility', () => {
   })
 })
 
+describe('model availability sidebar entry', () => {
+  it('appears next to the dashboard and targets the availability page', () => {
+    const { result } = sidebarFor()
+    const items =
+      result.current.find((group) => group.id === 'general')?.items ?? []
+    const dashboardIndex = items.findIndex((item) => item.title === 'Dashboard')
+    expect(dashboardIndex).toBeGreaterThanOrEqual(0)
+
+    expect(
+      items.slice(dashboardIndex, dashboardIndex + 3).map((item) => item.title)
+    ).toEqual(['Dashboard', 'Model availability', 'API Keys'])
+
+    const availabilityItem = items.find(
+      (item) => item.title === 'Model availability'
+    )
+    expect(availabilityItem).toMatchObject({
+      title: 'Model availability',
+      url: '/dashboard/availability',
+    })
+    expect(
+      items
+        .filter((item) => checkIsActive('/dashboard/availability', item))
+        .map((item) => item.title)
+    ).toEqual(['Model availability'])
+  })
+
+  it('follows the dashboard visibility setting', () => {
+    const { result } = sidebarFor({ console: { enabled: true, detail: false } })
+    const titles = result.current
+      .flatMap((group) => group.items)
+      .map((item) => item.title)
+
+    expect(titles).not.toContain('Dashboard')
+    expect(titles).not.toContain('Model availability')
+    expect(titles).toContain('API Keys')
+  })
+})
+
 describe('audit log sidebar entry', () => {
   it('admin settings default Audit Logs to visible and preserve its independent toggle when saved', () => {
     const config = parseSidebarModulesAdmin(
