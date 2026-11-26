@@ -28,8 +28,12 @@ import userEvent from '@testing-library/user-event'
 import { AxiosError } from 'axios'
 import { afterEach, expect, it, vi } from 'vitest'
 
-import type { WalletTransferStatus } from '@/features/wallet/types'
+import type {
+  WalletTransferQuote,
+  WalletTransferStatus,
+} from '@/features/wallet/types'
 import { api } from '@/lib/api'
+import { formatQuota } from '@/lib/format'
 
 import { TransferForm } from '../components/transfer-form'
 
@@ -69,7 +73,8 @@ function senderStatus(
 // review is answered for him; `confirm` decides how a submission ends.
 function renderForm(
   status: WalletTransferStatus,
-  confirm?: () => Promise<unknown>
+  confirm?: () => Promise<unknown>,
+  quoteOverrides: Partial<WalletTransferQuote> = {}
 ) {
   vi.spyOn(api, 'get').mockResolvedValue({
     data: {
@@ -113,6 +118,7 @@ function renderForm(
             display_type: 'USD',
             display_symbol: '$',
             expires_at: Math.floor(Date.now() / 1000) + 300,
+            ...quoteOverrides,
           },
         },
       },
@@ -152,6 +158,96 @@ it('keeps the transfer button unavailable until a payment password is set', asyn
     screen.getByRole('button', { name: 'Transfer balance' })
   ).toBeDisabled()
 })
+
+it('defaults to recipient fees and lets the sender pay extra before reviewing', async () => {
+  const { post } = renderForm(senderStatus())
+  const user = userEvent.setup()
+  await fillTransferToBob(user)
+  expect(screen.getByRole('radio', { name: 'Recipient pays' })).toBeChecked()
+  await user.click(screen.getByRole('radio', { name: 'Recipient pays' }))
+  await user.keyboard('{ArrowDown}')
+  expect(screen.getByRole('radio', { name: 'Sender pays' })).toBeChecked()
+  await user.click(screen.getByRole('button', { name: 'Transfer balance' }))
+  expect(post).toHaveBeenCalledWith(QUOTE_URL, {
+    recipient_id: 42,
+    amount: 1_000_000,
+    fee_payer: 'sender',
+  })
+  expect(await screen.findByRole('dialog')).toHaveTextContent('Total debited')
+})
+
+it('reserves room for sender fees when choosing All and enforces the daily cap', async () => {
+  renderForm(
+    senderStatus({ fee_percent: '2.00', daily_limit_quota: 1_020_000 })
+  )
+  const user = userEvent.setup()
+  await fillTransferToBob(user)
+  await user.click(screen.getByRole('radio', { name: 'Sender pays' }))
+  await user.click(screen.getByRole('button', { name: 'All' }))
+  expect(screen.getByLabelText('Transfer amount')).toHaveValue(2)
+  expect(screen.getByRole('button', { name: 'Transfer balance' })).toBeEnabled()
+  await user.clear(screen.getByLabelText('Transfer amount'))
+  await user.type(screen.getByLabelText('Transfer amount'), '2.01')
+  expect(
+    screen.getByRole('button', { name: 'Transfer balance' })
+  ).toBeDisabled()
+})
+
+it('includes the sender fee in the balance check and the All amount', async () => {
+  renderForm(senderStatus({ fee_percent: '2.00' }))
+  const user = userEvent.setup()
+  await fillTransferToBob(user)
+  await user.click(screen.getByRole('button', { name: 'All' }))
+  expect(screen.getByLabelText('Transfer amount')).toHaveValue(20)
+  await user.click(screen.getByRole('radio', { name: 'Sender pays' }))
+  expect(
+    screen.getByRole('button', { name: 'Transfer balance' })
+  ).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: 'All' }))
+  expect(screen.getByLabelText('Transfer amount')).toHaveValue(19.607842)
+  expect(screen.getByRole('button', { name: 'Transfer balance' })).toBeEnabled()
+})
+
+it.each([
+  {
+    payer: 'sender' as const,
+    debit: 1_020_000,
+    received: 1_000_000,
+    label: 'Sender pays',
+  },
+  {
+    payer: 'recipient' as const,
+    debit: 1_000_000,
+    received: 980_000,
+    label: 'Recipient pays',
+  },
+])(
+  'reviews the server amounts when $payer pays',
+  async ({ payer, debit, received, label }) => {
+    renderForm(senderStatus({ fee_percent: '2.00' }), undefined, {
+      fee_payer: payer,
+      transfer_amount: 1_000_000,
+      amount: debit,
+      fee: 20_000,
+      fee_percent: '2.00',
+      received,
+    })
+    const user = userEvent.setup()
+    await fillTransferToBob(user)
+    await user.click(screen.getByRole('radio', { name: label }))
+    await user.click(screen.getByRole('button', { name: 'Transfer balance' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    for (const [name, value] of [
+      ['Transfer amount', formatQuota(1_000_000)],
+      ['Total debited', formatQuota(debit)],
+      ['Recipient receives', formatQuota(received)],
+      ['Your balance after the transfer', formatQuota(10_000_000 - debit)],
+      ['Fee payer', payer === 'sender' ? 'Sender' : 'Recipient'],
+    ]) {
+      expect(dialog.getByText(name).parentElement).toHaveTextContent(value)
+    }
+  }
+)
 
 it('blocks an ordinary sender who has used every attempt but not the super administrator', async () => {
   const exhausted = { attempt_count: 10, used_quota: 50_000_000 }

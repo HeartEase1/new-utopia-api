@@ -40,6 +40,7 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  WalletTransferFeePayer,
   WalletTransferRecipient,
   WalletTransferStatus,
   WalletTransferQuoteResult,
@@ -94,11 +95,13 @@ export async function searchWalletTransferRecipients(
 
 export async function createWalletTransferQuote(
   recipientId: number,
-  amount: number
+  amount: number,
+  feePayer: WalletTransferFeePayer = 'recipient'
 ): Promise<WalletTransferQuoteResult> {
   const res = await api.post('/api/user/wallet-transfer/quote', {
     recipient_id: recipientId,
     amount,
+    fee_payer: feePayer,
   })
   return requireWalletSuccess(res.data, 'Failed to prepare transfer')
 }

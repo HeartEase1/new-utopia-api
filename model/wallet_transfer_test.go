@@ -19,6 +19,8 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -64,7 +66,7 @@ func createWalletTransferTestAccount(t *testing.T, username string, quota int, w
 
 func createWalletTransferTestQuote(t *testing.T, identity AuthSessionIdentity, recipientId int, amount int64, feePercent float64) *WalletTransferQuoteResult {
 	t.Helper()
-	result, err := CreateWalletTransferQuote(identity, recipientId, amount, feePercent, 1_000, 100, "USD", "$ ")
+	result, err := CreateWalletTransferQuote(identity, recipientId, amount, "", feePercent, 1_000, 100, "USD", "$ ")
 	require.NoError(t, err)
 	return result
 }
@@ -97,6 +99,114 @@ func TestWalletTransferMovesBalanceOnceAndRecordsRoundedFee(t *testing.T) {
 	var transferCount int64
 	require.NoError(t, DB.Model(&WalletTransfer{}).Count(&transferCount).Error)
 	assert.EqualValues(t, 1, transferCount)
+}
+
+func TestWalletTransferFeePayerAccounting(t *testing.T) {
+	for _, tc := range []struct {
+		name, payer          string
+		root                 bool
+		debit, fee, received int64
+	}{
+		{"legacy", "", false, 50, 1, 49},
+		{"recipient", WalletTransferFeePayerRecipient, false, 50, 1, 49},
+		{"sender", WalletTransferFeePayerSender, false, 51, 1, 50},
+		{"root-sender", WalletTransferFeePayerSender, true, 50, 0, 50},
+		{"root-recipient", WalletTransferFeePayerRecipient, true, 50, 0, 50},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prepareWalletTransferTest(t)
+			sender, identity, login, payment := createWalletTransferTestAccount(t, "fee-sender", 100, true)
+			recipient, _, _, _ := createWalletTransferTestAccount(t, "fee-recipient", 10, false)
+			if tc.root {
+				require.NoError(t, DB.Model(&User{}).Where("id = ?", sender.Id).Update("role", common.RoleRootUser).Error)
+			}
+			quote, err := CreateWalletTransferQuote(identity, recipient.Id, 50, tc.payer, 2, 1000, 100, "USD", "$")
+			require.NoError(t, err)
+			assert.Equal(t, int64(50), quote.Quote.TransferAmount)
+			assert.Equal(t, tc.debit, quote.Quote.Amount)
+			assert.Equal(t, tc.fee, quote.Quote.Fee)
+			assert.Equal(t, tc.received, quote.Quote.Received)
+			payer := tc.payer
+			if payer == "" {
+				payer = WalletTransferFeePayerRecipient
+				// An already-issued quote from the previous release has no payer.
+				var flow AuthFlow
+				require.NoError(t, DB.Where("user_id = ? AND purpose = ?", sender.Id, WalletTransferQuotePurpose).First(&flow).Error)
+				var payload map[string]any
+				require.NoError(t, common.UnmarshalJsonStr(flow.Payload, &payload))
+				delete(payload, "fee_payer")
+				encoded, err := common.Marshal(payload)
+				require.NoError(t, err)
+				require.NoError(t, DB.Model(&flow).Update("payload", string(encoded)).Error)
+			}
+			submit := WalletTransferSubmit{QuoteToken: quote.QuoteToken, LoginPassword: login, PaymentPassword: payment}
+			transfer, err := ConfirmWalletTransfer(identity, submit)
+			require.NoError(t, err)
+			assert.Equal(t, payer, transfer.FeePayer)
+			assert.Equal(t, int64(50), transfer.TransferAmount)
+			assert.Equal(t, tc.debit, transfer.Amount)
+			assert.Equal(t, tc.fee, transfer.Fee)
+			assert.Equal(t, tc.received, transfer.Received)
+			replayed, err := ConfirmWalletTransfer(identity, submit)
+			require.NoError(t, err)
+			assert.Equal(t, transfer.Id, replayed.Id)
+			assert.Equal(t, transfer.Amount, replayed.Amount)
+			assert.Equal(t, transfer.TransferAmount, replayed.TransferAmount)
+			assert.Equal(t, transfer.FeePayer, replayed.FeePayer)
+			assert.EqualValues(t, 100-tc.debit, getUserQuotaFromDB(t, sender.Id))
+			assert.EqualValues(t, 10+tc.received, getUserQuotaFromDB(t, recipient.Id))
+			status, err := GetWalletTransferStatus(sender.Id, 1000, "USD", "$")
+			require.NoError(t, err)
+			assert.Equal(t, tc.debit, status.UsedQuota)
+			var saved WalletTransfer
+			require.NoError(t, DB.First(&saved, transfer.Id).Error)
+			assert.Equal(t, payer, saved.FeePayer)
+			assert.Equal(t, int64(50), saved.TransferAmount)
+		})
+	}
+}
+
+func TestWalletTransferSenderFeeLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		balance                  int
+		amount, limit            int64
+		payer                    string
+		quoteError, confirmError error
+	}{
+		{"balance-includes-fee", 50, 50, 1000, WalletTransferFeePayerSender, nil, ErrWalletTransferInsufficient},
+		{"daily-includes-fee", 2000, 1000, 1000, WalletTransferFeePayerSender, nil, ErrWalletTransferDailyLimit},
+		{"debit-overflow", 100, common.MaxWalletQuota, 1000, WalletTransferFeePayerSender, ErrWalletTransferInvalid, nil},
+		{"invalid-payer", 100, 50, 1000, "other", ErrWalletTransferInvalid, nil},
+		{"small-sender", 100, 1, 100, WalletTransferFeePayerSender, nil, nil},
+		{"small-recipient", 100, 1, 100, WalletTransferFeePayerRecipient, ErrWalletTransferInvalid, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prepareWalletTransferTest(t)
+			sender, identity, login, payment := createWalletTransferTestAccount(t, "limit-sender", tc.balance, true)
+			recipient, _, _, _ := createWalletTransferTestAccount(t, "limit-recipient", 0, false)
+			quote, err := CreateWalletTransferQuote(identity, recipient.Id, tc.amount, tc.payer, 2, tc.limit, 100, "USD", "$")
+			if tc.quoteError != nil {
+				require.ErrorIs(t, err, tc.quoteError)
+			} else {
+				require.NoError(t, err)
+				_, err = ConfirmWalletTransfer(identity, WalletTransferSubmit{QuoteToken: quote.QuoteToken, LoginPassword: login, PaymentPassword: payment})
+				if tc.confirmError != nil {
+					require.ErrorIs(t, err, tc.confirmError)
+				} else {
+					require.NoError(t, err)
+					assert.Equal(t, 98, getUserQuotaFromDB(t, sender.Id))
+					assert.Equal(t, 1, getUserQuotaFromDB(t, recipient.Id))
+					return
+				}
+			}
+			assert.Equal(t, tc.balance, getUserQuotaFromDB(t, sender.Id))
+			assert.Zero(t, getUserQuotaFromDB(t, recipient.Id))
+			var count int64
+			require.NoError(t, DB.Model(&WalletTransfer{}).Count(&count).Error)
+			assert.Zero(t, count)
+		})
+	}
 }
 
 func TestWalletTransferFeeExemptionRequiresCurrentRootSender(t *testing.T) {
@@ -221,7 +331,7 @@ func TestWalletTransferDailyCapAndTOTPExemption(t *testing.T) {
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", sender.Id).Update("role", common.RoleRootUser).Error)
 
 	// One transfer sends at least one display unit: a hundredth of the daily cap.
-	_, err = CreateWalletTransferQuote(identity, recipient.Id, 9, 0, 1_000, 100, "USD", "$ ")
+	_, err = CreateWalletTransferQuote(identity, recipient.Id, 9, "", 0, 1_000, 100, "USD", "$ ")
 	assert.ErrorIs(t, err, ErrWalletTransferBelowMinimum)
 	for i := range 10 {
 		require.NoError(t, DB.Create(&WalletTransferAttempt{
@@ -377,6 +487,45 @@ func TestWalletTransferRespectsQuotaReservedInTheCache(t *testing.T) {
 	assert.Equal(t, 20, getUserQuotaFromDB(t, recipient.Id))
 }
 
+func TestWalletTransferSenderFeePreservesOtherReservations(t *testing.T) {
+	prepareWalletTransferTest(t)
+	useWalletTransferTestRedis(t, nil)
+	sender, identity, login, payment := createWalletTransferTestAccount(t, "fee-cache-sender", 100, true)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "fee-cache-recipient", 0, false)
+	_, err := GetUserCache(sender.Id)
+	require.NoError(t, err)
+	_, err = GetUserCache(recipient.Id)
+	require.NoError(t, err)
+	reserved, err := cacheTryReserveUserQuota(sender.Id, 50)
+	require.NoError(t, err)
+	require.Equal(t, cacheQuotaOK, reserved)
+	for _, amount := range []int64{50, 49} {
+		quote, err := CreateWalletTransferQuote(identity, recipient.Id, amount, WalletTransferFeePayerSender, 2, 1000, 100, "USD", "$")
+		require.NoError(t, err)
+		transfer, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{QuoteToken: quote.QuoteToken, LoginPassword: login, PaymentPassword: payment})
+		if amount == 50 {
+			require.ErrorIs(t, err, ErrWalletTransferInsufficient, "fee must also fit the unreserved balance")
+			assert.Equal(t, 100, getUserQuotaFromDB(t, sender.Id))
+			assert.Zero(t, getUserQuotaFromDB(t, recipient.Id))
+			cached, err := getUserQuotaCache(sender.Id)
+			require.NoError(t, err)
+			assert.Equal(t, 50, cached)
+		} else {
+			require.NoError(t, err)
+			assert.Equal(t, int64(50), transfer.Amount)
+			assert.Equal(t, int64(1), transfer.Fee)
+			assert.Equal(t, 50, getUserQuotaFromDB(t, sender.Id))
+			assert.Equal(t, 49, getUserQuotaFromDB(t, recipient.Id))
+			cached, err := getUserQuotaCache(sender.Id)
+			require.NoError(t, err)
+			assert.Zero(t, cached, "the original request still reserves 50")
+			cached, err = getUserQuotaCache(recipient.Id)
+			require.NoError(t, err)
+			assert.Equal(t, 49, cached)
+		}
+	}
+}
+
 // When Redis cannot answer, the reservations it holds are unknown, so the
 // transfer is refused rather than trusting a database balance that may not
 // include them yet.
@@ -448,7 +597,9 @@ func useWalletTransferTestRedis(t *testing.T, hook redis.Hook) *miniredis.Minire
 	server := miniredis.RunT(t)
 	oldRedisEnabled, oldRDB := common.RedisEnabled, common.RDB
 	client := redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: -1})
-	client.AddHook(hook)
+	if hook != nil {
+		client.AddHook(hook)
+	}
 	common.RedisEnabled, common.RDB = true, client
 	t.Cleanup(func() {
 		_ = common.RDB.Close()
@@ -569,7 +720,7 @@ func TestWalletTransferTimeoutAfterReservingGivesThatAmountBack(t *testing.T) {
 	failed := false
 	useWalletTransferTestRedis(t, failReservationOnce{afterRun: true, failed: &failed})
 	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "lost-answer-sender", 100, true)
-	recipient, _, _, _ := createWalletTransferTestAccount(t, "lost-answer-recipient", 0, false)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "lost-answer-recv", 0, false)
 	_, err := GetUserCache(sender.Id)
 	require.NoError(t, err)
 
@@ -664,7 +815,16 @@ func useCommitFailingDB(t *testing.T, pool commitFailingPool) {
 	sqlDB, err := DB.DB()
 	require.NoError(t, err)
 	pool.DB = sqlDB
-	failing, err := gorm.Open(&sqlite.Dialector{Conn: pool}, &gorm.Config{})
+	var dialect gorm.Dialector
+	switch DB.Dialector.Name() {
+	case "mysql":
+		dialect = mysql.New(mysql.Config{Conn: pool})
+	case "postgres":
+		dialect = postgres.New(postgres.Config{Conn: pool, PreferSimpleProtocol: true})
+	default:
+		dialect = &sqlite.Dialector{Conn: pool}
+	}
+	failing, err := gorm.Open(dialect, &gorm.Config{})
 	require.NoError(t, err)
 	previous := DB
 	DB = failing
@@ -691,8 +851,8 @@ func prepareUnknownCommit(t *testing.T, committed bool) (User, User, *WalletTran
 		common.BatchUpdateEnabled, walletTransferResolveDelay = oldBatch, oldDelay
 		uncertainWalletTransfers.Clear()
 	})
-	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "unknown-commit-sender", 100, true)
-	recipient, _, _, _ := createWalletTransferTestAccount(t, "unknown-commit-recipient", 0, false)
+	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "unknown-commit-send", 100, true)
+	recipient, _, _, _ := createWalletTransferTestAccount(t, "unknown-commit-recv", 0, false)
 	failCommit, failQuery := new(bool), new(bool)
 	useCommitFailingDB(t, commitFailingPool{failCommit: failCommit, committed: committed, failQuery: failQuery})
 	quote := createWalletTransferTestQuote(t, identity, recipient.Id, 50, 0)
@@ -1229,4 +1389,76 @@ func mustWalletPasswordHash(t *testing.T, password string) string {
 	hash, err := common.Password2Hash(password)
 	require.NoError(t, err)
 	return hash
+}
+
+// Released schema before fee-payer selection; kept for upgrade verification.
+type walletTransferBeforeFeePayer struct {
+	Id                   int64     `json:"id" gorm:"primaryKey"`
+	QuoteFlowId          int64     `json:"-" gorm:"uniqueIndex;not null"`
+	SenderId             int       `json:"sender_id" gorm:"index:idx_wallet_transfer_sender_date;not null"`
+	SenderUsername       string    `json:"sender_username" gorm:"type:varchar(20);not null"`
+	SenderDisplayName    string    `json:"sender_display_name" gorm:"type:varchar(20)"`
+	RecipientId          int       `json:"recipient_id" gorm:"index:idx_wallet_transfer_recipient_date;not null"`
+	RecipientUsername    string    `json:"recipient_username" gorm:"type:varchar(20);not null"`
+	RecipientDisplayName string    `json:"recipient_display_name" gorm:"type:varchar(20)"`
+	Amount               int64     `json:"amount" gorm:"type:bigint;not null"`
+	Fee                  int64     `json:"fee" gorm:"type:bigint;not null"`
+	Received             int64     `json:"received" gorm:"type:bigint;not null"`
+	FeePercent           string    `json:"fee_percent" gorm:"type:varchar(16);not null"`
+	DateKey              string    `json:"-" gorm:"type:varchar(10);index:idx_wallet_transfer_sender_date;index:idx_wallet_transfer_recipient_date;not null"`
+	CreatedAt            time.Time `json:"created_at" gorm:"not null;index"`
+	// TradeNo is derived from DateKey and Id, so it needs no column of its own.
+	TradeNo string `json:"trade_no" gorm:"-"`
+}
+
+func (walletTransferBeforeFeePayer) TableName() string { return "wallet_transfers" }
+
+func TestWalletTransferFeePayerMigration(t *testing.T) {
+	for _, upgrade := range []bool{false, true} {
+		t.Run(fmt.Sprintf("upgrade=%t", upgrade), func(t *testing.T) {
+			prepareWalletTransferTest(t)
+			require.NoError(t, DB.Migrator().DropTable(&WalletTransfer{}))
+			t.Cleanup(func() { require.NoError(t, DB.AutoMigrate(&WalletTransfer{})) })
+			var oldID int64
+			if upgrade {
+				require.NoError(t, DB.AutoMigrate(&walletTransferBeforeFeePayer{}))
+				old := walletTransferBeforeFeePayer{
+					QuoteFlowId: 987001, SenderId: 1, SenderUsername: "alice",
+					RecipientId: 2, RecipientUsername: "bob", Amount: 50, Fee: 1,
+					Received: 49, FeePercent: "2.00", DateKey: "2026-11-25", CreatedAt: time.Now(),
+				}
+				require.NoError(t, DB.Create(&old).Error)
+				oldID = old.Id
+			}
+			// Starting the upgraded application twice must preserve records and indexes.
+			for range 2 {
+				require.NoError(t, DB.AutoMigrate(&WalletTransfer{}))
+			}
+			if upgrade {
+				var old WalletTransfer
+				require.NoError(t, DB.First(&old, oldID).Error)
+				assert.Equal(t, WalletTransferFeePayerRecipient, old.FeePayer)
+				assert.Equal(t, int64(50), old.TransferAmount)
+				assert.Equal(t, int64(1), old.Fee)
+				assert.Equal(t, int64(49), old.Received)
+				assert.Equal(t, "alice", old.SenderUsername)
+				assert.Equal(t, "bob", old.RecipientUsername)
+			}
+			for _, index := range []string{"idx_wallet_transfers_quote_flow_id", "idx_wallet_transfer_sender_date", "idx_wallet_transfer_recipient_date", "idx_wallet_transfers_created_at"} {
+				assert.True(t, DB.Migrator().HasIndex(&WalletTransfer{}, index), index)
+			}
+			row := WalletTransfer{
+				QuoteFlowId: 987002, SenderId: 1, SenderUsername: "alice", RecipientId: 2,
+				RecipientUsername: "bob", Amount: 51, Fee: 1, Received: 50, FeePercent: "2.00",
+				FeePayer: WalletTransferFeePayerSender, DateKey: "2026-11-26", CreatedAt: time.Now(),
+			}
+			require.NoError(t, DB.Create(&row).Error)
+			var saved WalletTransfer
+			require.NoError(t, DB.First(&saved, row.Id).Error)
+			assert.Equal(t, int64(50), saved.TransferAmount)
+			assert.Equal(t, WalletTransferFeePayerSender, saved.FeePayer)
+			row.Id = 0
+			require.Error(t, DB.Create(&row).Error, "quote uniqueness must survive migration")
+		})
+	}
 }

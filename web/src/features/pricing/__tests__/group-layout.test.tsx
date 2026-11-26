@@ -48,13 +48,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function renderEditor() {
+function renderEditor(groups = ['default', 'premium', 'free', 'new']) {
   const get = vi.spyOn(api, 'get').mockImplementation(async (url) => ({
     data: {
       success: true,
       data:
         url === '/api/group/'
-          ? ['default', 'premium', 'free', 'new']
+          ? groups
           : [{ key: PRICING_GROUP_LAYOUT_KEY, value: JSON.stringify(saved) }],
     },
   }))
@@ -72,6 +72,37 @@ function renderEditor() {
   )
   return { get, put, onClose }
 }
+
+it.each([
+  ['deleted and renamed groups', ['default', 'premium-renamed']],
+  ['all groups deleted', []],
+])(
+  'removes stale saved members when opening and saving after %s',
+  async (_, groups) => {
+    const { put, onClose } = renderEditor(groups)
+    const user = userEvent.setup()
+    expect(
+      await screen.findByRole('textbox', { name: 'Drawer name' })
+    ).toHaveValue('Supplier A')
+    for (const group of ['premium', 'free']) {
+      expect(
+        screen.queryByRole('combobox', { name: `Drawer for ${group}` })
+      ).not.toBeInTheDocument()
+    }
+    for (const group of groups) {
+      expect(
+        screen.getByRole('combobox', { name: `Drawer for ${group}` })
+      ).toBeInTheDocument()
+    }
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    const payload = JSON.parse(
+      (put.mock.calls[0][1] as { value: string }).value
+    ) as PricingGroupLayoutItem[]
+    expect(payload.flatMap((item) => item.groups)).toEqual(groups)
+    expect(payload[0]).toEqual({ ...saved[0], groups: [] })
+  }
+)
 
 it('retains saved positions, filters hidden groups, and appends new groups in stable order', () => {
   expect(

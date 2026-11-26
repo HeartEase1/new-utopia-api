@@ -205,6 +205,24 @@ func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	)
 }
 
+// WalletTransferReadRateLimit bounds database-backed transfer status and
+// history reads per authenticated account.
+func WalletTransferReadRateLimit() func(c *gin.Context) {
+	if !common.CriticalRateLimitEnable {
+		return defNext
+	}
+	return userRateLimitFactory(60, 5*60, "UC:wallet-transfer-read")
+}
+
+// ModelAvailabilityRateLimit bounds availability aggregation requests per
+// authenticated account.
+func ModelAvailabilityRateLimit() func(c *gin.Context) {
+	if !common.CriticalRateLimitEnable {
+		return defNext
+	}
+	return userRateLimitFactory(10, 5*60, "UC:model-availability")
+}
+
 // Payment polling is bounded per authenticated account, independently of IP.
 func AlipayF2FQueryRateLimit() func(c *gin.Context) {
 	return userRateLimitFactory(30, 60, "ALIPAY_F2F_QUERY")

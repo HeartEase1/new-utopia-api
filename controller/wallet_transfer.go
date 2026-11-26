@@ -16,8 +16,9 @@ import (
 )
 
 type walletTransferQuoteRequest struct {
-	RecipientId int   `json:"recipient_id"`
-	Amount      int64 `json:"amount"`
+	FeePayer    string `json:"fee_payer"`
+	RecipientId int    `json:"recipient_id"`
+	Amount      int64  `json:"amount"`
 }
 
 type walletTransferConfirmRequest struct {
@@ -88,7 +89,7 @@ func CreateWalletTransferQuote(c *gin.Context) {
 		return
 	}
 	result, err := model.CreateWalletTransferQuote(
-		identity, request.RecipientId, request.Amount,
+		identity, request.RecipientId, request.Amount, request.FeePayer,
 		operation_setting.GetPaymentSetting().WalletTransferFeePercent,
 		snapshot.Quota, snapshot.Amount, snapshot.DisplayType, snapshot.Symbol,
 	)

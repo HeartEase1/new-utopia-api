@@ -281,11 +281,16 @@ export interface WalletTransferStatus {
   display_symbol: string
 }
 
+export type WalletTransferFeePayer = 'sender' | 'recipient'
+
 export interface WalletTransferQuote {
   recipient_id: number
   recipient_username: string
   recipient_display_name: string
+  /** Total sender debit, including the fee. */
   amount: number
+  transfer_amount?: number
+  fee_payer?: WalletTransferFeePayer
   fee: number
   received: number
   fee_percent: string
@@ -309,7 +314,10 @@ export interface WalletTransferRecord {
   recipient_id: number
   recipient_username: string
   recipient_display_name: string
+  /** Total sender debit, including the fee. */
   amount: number
+  transfer_amount?: number
+  fee_payer?: WalletTransferFeePayer
   fee: number
   received: number
   fee_percent: string

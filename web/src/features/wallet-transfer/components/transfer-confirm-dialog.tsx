@@ -183,11 +183,21 @@ export function TransferConfirmDialog(props: TransferConfirmDialogProps) {
             <SummaryRow label={t('User ID')} value={quote.recipient_id} />
             <SummaryRow
               label={t('Transfer amount')}
-              value={formatQuota(quote.amount)}
+              value={formatQuota(quote.transfer_amount ?? quote.amount)}
             />
             <SummaryRow
               label={t('Fee ({{percent}}%)', { percent: quote.fee_percent })}
               value={formatQuota(quote.fee)}
+            />
+            <SummaryRow
+              label={t('Fee payer')}
+              value={
+                quote.fee_payer === 'sender' ? t('Sender') : t('Recipient')
+              }
+            />
+            <SummaryRow
+              label={t('Total debited')}
+              value={formatQuota(quote.amount)}
             />
             <div className='border-t pt-2'>
               <SummaryRow

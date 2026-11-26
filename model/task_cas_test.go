@@ -13,6 +13,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -21,28 +22,32 @@ func TestMain(m *testing.M) {
 	var db *gorm.DB
 	var err error
 	databaseType := common.DatabaseTypeSQLite
-	// TEST_MODEL_POSTGRES_DSN runs the package against a dedicated, empty
-	// PostgreSQL database instead of in-memory SQLite. Tests create and delete
-	// rows freely, so a database that already holds users is refused.
-	if dsn := os.Getenv("TEST_MODEL_POSTGRES_DSN"); dsn != "" {
-		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
-		if err != nil {
-			panic("failed to open test postgres db: " + err.Error())
-		}
+	// These DSNs must refer to dedicated empty test databases. Fixtures freely
+	// create/delete rows and the migration regression recreates wallet_transfers.
+	pgDSN, mysqlDSN := os.Getenv("TEST_MODEL_POSTGRES_DSN"), os.Getenv("TEST_MODEL_MYSQL_DSN")
+	if pgDSN != "" && mysqlDSN != "" {
+		panic("set only one TEST_MODEL database DSN")
+	}
+	switch {
+	case pgDSN != "":
+		db, err = gorm.Open(postgres.New(postgres.Config{DSN: pgDSN, PreferSimpleProtocol: true}), &gorm.Config{})
+		databaseType = common.DatabaseTypePostgreSQL
+	case mysqlDSN != "":
+		db, err = gorm.Open(mysql.Open(mysqlDSN), &gorm.Config{})
+		databaseType = common.DatabaseTypeMySQL
+	default:
+		db, err = gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	}
+	if err != nil {
+		panic("failed to open test database: " + err.Error())
+	}
+	if db.Migrator().HasTable("users") {
 		var users int64
-		if db.Migrator().HasTable("users") {
-			if err := db.Table("users").Count(&users).Error; err != nil {
-				panic("failed to inspect test postgres db: " + err.Error())
-			}
+		if err := db.Table("users").Count(&users).Error; err != nil {
+			panic("failed to inspect test database: " + err.Error())
 		}
 		if users > 0 {
-			panic("TEST_MODEL_POSTGRES_DSN must point to an empty, dedicated test database: it already has users")
-		}
-		databaseType = common.DatabaseTypePostgreSQL
-	} else {
-		db, err = gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		if err != nil {
-			panic("failed to open test db: " + err.Error())
+			panic("TEST_MODEL DSN must point to an empty, dedicated test database: it already has users")
 		}
 	}
 	DB = db

@@ -152,14 +152,13 @@ export function TransferHistory(props: TransferHistoryProps) {
           />
         </div>
 
-        <dl className='bg-muted/40 mt-3 grid grid-cols-3 gap-3 rounded-md p-3'>
+        <dl className='bg-muted/40 mt-3 grid grid-cols-2 gap-3 rounded-md p-3 sm:grid-cols-3'>
           <div className='min-w-0'>
             <dt className='text-muted-foreground text-xs'>
               {t('Transfer amount')}
             </dt>
             <dd className='mt-1 text-sm font-semibold tabular-nums'>
-              {sent ? '−' : ''}
-              {formatQuota(record.amount)}
+              {formatQuota(record.transfer_amount ?? record.amount)}
             </dd>
           </div>
           <div className='min-w-0'>
@@ -177,6 +176,21 @@ export function TransferHistory(props: TransferHistoryProps) {
             <dd className='mt-1 text-sm font-semibold tabular-nums'>
               {received ? '+' : ''}
               {formatQuota(record.received)}
+            </dd>
+          </div>
+          <div className='min-w-0'>
+            <dt className='text-muted-foreground text-xs'>
+              {t('Total debited')}
+            </dt>
+            <dd className='mt-1 text-sm font-semibold tabular-nums'>
+              {sent ? '−' : ''}
+              {formatQuota(record.amount)}
+            </dd>
+          </div>
+          <div className='min-w-0'>
+            <dt className='text-muted-foreground text-xs'>{t('Fee payer')}</dt>
+            <dd className='mt-1 text-sm font-medium'>
+              {record.fee_payer === 'sender' ? t('Sender') : t('Recipient')}
             </dd>
           </div>
         </dl>

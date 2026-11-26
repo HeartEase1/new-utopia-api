@@ -24,6 +24,8 @@ import (
 )
 
 const (
+	WalletTransferFeePayerSender     = "sender"
+	WalletTransferFeePayerRecipient  = "recipient"
 	WalletTransferQuotePurpose       = "wallet_transfer_quote"
 	WalletPasswordFlowPurpose        = "wallet_password"
 	WalletTransferQuoteTTL           = 5 * time.Minute
@@ -103,7 +105,9 @@ type WalletTransfer struct {
 	RecipientId          int       `json:"recipient_id" gorm:"index:idx_wallet_transfer_recipient_date;not null"`
 	RecipientUsername    string    `json:"recipient_username" gorm:"type:varchar(20);not null"`
 	RecipientDisplayName string    `json:"recipient_display_name" gorm:"type:varchar(20)"`
-	Amount               int64     `json:"amount" gorm:"type:bigint;not null"`
+	Amount               int64     `json:"amount" gorm:"type:bigint;not null"` // Total sender debit, including the fee.
+	FeePayer             string    `json:"fee_payer" gorm:"type:varchar(16)"`
+	TransferAmount       int64     `json:"transfer_amount" gorm:"-"`
 	Fee                  int64     `json:"fee" gorm:"type:bigint;not null"`
 	Received             int64     `json:"received" gorm:"type:bigint;not null"`
 	FeePercent           string    `json:"fee_percent" gorm:"type:varchar(16);not null"`
@@ -139,12 +143,18 @@ func ParseWalletTransferTradeNo(tradeNo string) (dateKey string, id int64, ok bo
 
 func (t *WalletTransfer) AfterFind(*gorm.DB) error {
 	t.TradeNo = WalletTransferTradeNo(t.DateKey, t.Id)
+	if t.FeePayer == "" {
+		t.FeePayer = WalletTransferFeePayerRecipient
+	}
+	t.TransferAmount = t.Amount
+	if t.FeePayer == WalletTransferFeePayerSender {
+		t.TransferAmount = t.Received
+	}
 	return nil
 }
 
-func (t *WalletTransfer) AfterCreate(*gorm.DB) error {
-	t.TradeNo = WalletTransferTradeNo(t.DateKey, t.Id)
-	return nil
+func (t *WalletTransfer) AfterCreate(tx *gorm.DB) error {
+	return t.AfterFind(tx)
 }
 
 type WalletTransferQuote struct {
@@ -152,6 +162,8 @@ type WalletTransferQuote struct {
 	RecipientUsername    string `json:"recipient_username"`
 	RecipientDisplayName string `json:"recipient_display_name"`
 	Amount               int64  `json:"amount"`
+	FeePayer             string `json:"fee_payer"`
+	TransferAmount       int64  `json:"transfer_amount"`
 	Fee                  int64  `json:"fee"`
 	Received             int64  `json:"received"`
 	FeePercent           string `json:"fee_percent"`
@@ -202,6 +214,7 @@ type walletTransferQuoteState struct {
 	RecipientUsername    string `json:"recipient_username"`
 	RecipientDisplayName string `json:"recipient_display_name"`
 	Amount               int64  `json:"amount"`
+	FeePayer             string `json:"fee_payer"`
 	Fee                  int64  `json:"fee"`
 	Received             int64  `json:"received"`
 	FeePercent           string `json:"fee_percent"`
@@ -262,13 +275,20 @@ func walletTransferFee(amount int64, feePercent float64) (int64, string, error) 
 	rate := decimal.NewFromFloat(feePercent)
 	feeDecimal := decimal.NewFromInt(amount).Mul(rate).Div(decimal.NewFromInt(100)).Ceil()
 	fee, err := common.WalletQuotaFromDecimalStrict(feeDecimal)
-	if err != nil || fee < 0 || int64(fee) >= amount {
+	if err != nil || fee < 0 {
 		return 0, "", ErrWalletTransferInvalid
 	}
 	return int64(fee), rate.StringFixed(2), nil
 }
 
-func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, amount int64, feePercent float64, dailyLimitQuota int64, dailyLimitAmount int, displayType, displaySymbol string) (*WalletTransferQuoteResult, error) {
+func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, amount int64, feePayer string, feePercent float64, dailyLimitQuota int64, dailyLimitAmount int, displayType, displaySymbol string) (*WalletTransferQuoteResult, error) {
+	// Missing payer preserves quotes from clients predating the selector.
+	if feePayer == "" {
+		feePayer = WalletTransferFeePayerRecipient
+	}
+	if feePayer != WalletTransferFeePayerSender && feePayer != WalletTransferFeePayerRecipient {
+		return nil, ErrWalletTransferInvalid
+	}
 	if identity.UserID <= 0 || identity.SessionID == "" || recipientId <= 0 || amount <= 0 || amount > common.MaxWalletQuota || dailyLimitQuota <= 0 || dailyLimitQuota > common.MaxQuota || dailyLimitAmount != WalletTransferDailyLimit || len(displayType) > 16 || len(displaySymbol) > 16 {
 		return nil, ErrWalletTransferInvalid
 	}
@@ -277,7 +297,7 @@ func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, am
 		return nil, ErrWalletTransferBelowMinimum
 	}
 	state := walletTransferQuoteState{
-		SenderId: identity.UserID, RecipientId: recipientId, Amount: amount,
+		SenderId: identity.UserID, RecipientId: recipientId, Amount: amount, FeePayer: feePayer,
 		DateKey:         walletTransferDateKey(time.Now()),
 		DailyLimitQuota: dailyLimitQuota, DailyLimitAmount: dailyLimitAmount,
 		DisplayType: displayType, DisplaySymbol: displaySymbol,
@@ -318,7 +338,16 @@ func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, am
 		if err != nil {
 			return err
 		}
+		if feePayer == WalletTransferFeePayerRecipient && fee >= amount {
+			return ErrWalletTransferInvalid
+		}
 		state.Fee, state.FeePercent, state.Received = fee, feePercentSnapshot, amount-fee
+		if feePayer == WalletTransferFeePayerSender {
+			if amount > common.MaxWalletQuota-fee {
+				return ErrWalletTransferInvalid
+			}
+			state.Amount, state.Received = amount+fee, amount
+		}
 		state.RecipientUsername = recipient.Username
 		state.RecipientDisplayName = recipient.DisplayName
 		config := WalletTransferDailyConfig{
@@ -351,6 +380,7 @@ func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, am
 			Quote: WalletTransferQuote{
 				RecipientId: state.RecipientId, RecipientUsername: state.RecipientUsername,
 				RecipientDisplayName: state.RecipientDisplayName, Amount: state.Amount, Fee: state.Fee,
+				FeePayer: state.FeePayer, TransferAmount: amount,
 				Received: state.Received, FeePercent: state.FeePercent, DailyLimitQuota: state.DailyLimitQuota,
 				DailyLimitAmount: state.DailyLimitAmount, DisplayType: state.DisplayType,
 				DisplaySymbol: state.DisplaySymbol, ExpiresAt: flow.ExpiresAt.Unix(),
@@ -787,6 +817,12 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		if err := common.UnmarshalJsonStr(flow.Payload, &quote); err != nil || quote.SenderId != identity.UserID || quote.RecipientId <= 0 || quote.Amount <= 0 || quote.Received <= 0 || quote.Fee < 0 || quote.Amount-quote.Fee != quote.Received {
 			return ErrWalletTransferInvalid
 		}
+		if quote.FeePayer == "" {
+			quote.FeePayer = WalletTransferFeePayerRecipient
+		}
+		if quote.FeePayer != WalletTransferFeePayerSender && quote.FeePayer != WalletTransferFeePayerRecipient {
+			return ErrWalletTransferQuoteInvalid
+		}
 		now := time.Now()
 		claim := applyAuthFlowMatch(tx.Model(&AuthFlow{}), input.QuoteToken, match).
 			Where("consumed_at IS NULL AND expires_at > ?", now).
@@ -974,7 +1010,7 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 			QuoteFlowId: flow.Id, SenderId: sender.Id, SenderUsername: sender.Username,
 			SenderDisplayName: sender.DisplayName, RecipientId: recipient.Id,
 			RecipientUsername: recipient.Username, RecipientDisplayName: recipient.DisplayName,
-			Amount: quote.Amount, Fee: quote.Fee, Received: quote.Received, FeePercent: quote.FeePercent,
+			Amount: quote.Amount, Fee: quote.Fee, Received: quote.Received, FeePercent: quote.FeePercent, FeePayer: quote.FeePayer,
 			DateKey: dateKey, CreatedAt: now,
 		}
 		if err := tx.Create(&transfer).Error; err != nil {

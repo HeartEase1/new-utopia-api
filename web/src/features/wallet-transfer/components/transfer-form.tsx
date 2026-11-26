@@ -26,12 +26,14 @@ import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   confirmWalletTransfer,
   createWalletTransferQuote,
   searchWalletTransferRecipients,
 } from '@/features/wallet/api'
 import type {
+  WalletTransferFeePayer,
   WalletTransferQuoteResult,
   WalletTransferRecipient,
   WalletTransferRecord,
@@ -58,6 +60,26 @@ function isTransferOutcomeUnknown(error: unknown): boolean {
   return status === undefined || status >= 500
 }
 
+// Fees round up to a quota unit. Integer division gives the largest transfer
+// whose amount plus fee fits the debit limit, without floating-point overflow.
+function maximumTransferQuota(
+  debitLimit: number,
+  feeBasisPoints: number
+): number {
+  if (
+    !Number.isSafeInteger(debitLimit) ||
+    debitLimit < 0 ||
+    !Number.isInteger(feeBasisPoints) ||
+    feeBasisPoints < 0 ||
+    feeBasisPoints >= 10000
+  ) {
+    return 0
+  }
+  return Number(
+    (BigInt(debitLimit) * 10000n) / (10000n + BigInt(feeBasisPoints))
+  )
+}
+
 interface TransferFormProps {
   /** Undefined while the sender's transfer settings are loading. */
   status: WalletTransferStatus | undefined
@@ -80,6 +102,7 @@ export function TransferForm(props: TransferFormProps) {
     null
   )
   const [amountInput, setAmountInput] = useState('')
+  const [feePayer, setFeePayer] = useState<WalletTransferFeePayer>('recipient')
   const [quote, setQuote] = useState<WalletTransferQuoteResult | null>(null)
   const [preparing, setPreparing] = useState(false)
   const [transferring, setTransferring] = useState(false)
@@ -104,14 +127,26 @@ export function TransferForm(props: TransferFormProps) {
   const remainingDailyQuota = status
     ? Math.max(0, status.daily_limit_quota - status.used_quota)
     : 0
+  const extraFeeBasisPoints =
+    feePayer === 'sender' && !status?.limits_exempt
+      ? Math.round(Number(status?.fee_percent ?? 0) * 100)
+      : 0
+  const maximumAvailable = maximumTransferQuota(
+    props.availableQuota,
+    extraFeeBasisPoints
+  )
+  const maximumDaily = maximumTransferQuota(
+    remainingDailyQuota,
+    extraFeeBasisPoints
+  )
   const maximumQuota = dailyCapped
-    ? Math.min(props.availableQuota, remainingDailyQuota)
-    : props.availableQuota
+    ? Math.min(maximumAvailable, maximumDaily)
+    : maximumAvailable
   const amountEntered = amountInput.trim() !== '' && transferAmount > 0
   const minimumQuota = status?.min_quota ?? 0
   const belowMinimum = amountEntered && transferAmount < minimumQuota
-  const exceedsAvailable = transferAmount > props.availableQuota
-  const exceedsDaily = dailyCapped && transferAmount > remainingDailyQuota
+  const exceedsAvailable = transferAmount > maximumAvailable
+  const exceedsDaily = dailyCapped && transferAmount > maximumDaily
   const attemptsExhausted =
     status !== undefined &&
     !status.limits_exempt &&
@@ -123,6 +158,7 @@ export function TransferForm(props: TransferFormProps) {
     !attemptsExhausted &&
     recipient !== null &&
     amountEntered &&
+    Number.isSafeInteger(transferAmount) &&
     !belowMinimum &&
     transferAmount <= maximumQuota
 
@@ -138,7 +174,9 @@ export function TransferForm(props: TransferFormProps) {
     if (!recipient || !canPrepare) return
     setPreparing(true)
     try {
-      setQuote(await createWalletTransferQuote(recipient.id, transferAmount))
+      setQuote(
+        await createWalletTransferQuote(recipient.id, transferAmount, feePayer)
+      )
     } catch (error) {
       handleServerError(error, t('Failed to prepare transfer'))
     } finally {
@@ -214,6 +252,16 @@ export function TransferForm(props: TransferFormProps) {
           />
           <SummaryRow
             label={t('Transfer amount')}
+            value={formatQuota(completed.transfer_amount ?? completed.amount)}
+          />
+          <SummaryRow
+            label={t('Fee payer')}
+            value={
+              completed.fee_payer === 'sender' ? t('Sender') : t('Recipient')
+            }
+          />
+          <SummaryRow
+            label={t('Total debited')}
             value={formatQuota(completed.amount)}
           />
           <SummaryRow
@@ -324,6 +372,42 @@ export function TransferForm(props: TransferFormProps) {
           </>
         )}
       </div>
+
+      <fieldset className='space-y-2'>
+        <legend className='text-sm font-medium'>{t('Fee payer')}</legend>
+        <RadioGroup
+          aria-label={t('Fee payer')}
+          value={feePayer}
+          onValueChange={(value) =>
+            setFeePayer(value as WalletTransferFeePayer)
+          }
+        >
+          <div className='flex items-center gap-2'>
+            <RadioGroupItem id={`${ids}-recipient-fee`} value='recipient' />
+            <Label htmlFor={`${ids}-recipient-fee`}>
+              {t('Recipient pays')}
+            </Label>
+          </div>
+          <div className='flex items-center gap-2'>
+            <RadioGroupItem id={`${ids}-sender-fee`} value='sender' />
+            <Label htmlFor={`${ids}-sender-fee`}>{t('Sender pays')}</Label>
+          </div>
+        </RadioGroup>
+        <p className='text-muted-foreground text-xs'>
+          {feePayer === 'sender'
+            ? t(
+                'The fee is added to your debit. The recipient receives the full transfer amount.'
+              )
+            : t(
+                'The fee is deducted from the transfer amount received by the recipient.'
+              )}
+        </p>
+        {dailyCapped && feePayer === 'sender' ? (
+          <p className='text-muted-foreground text-xs'>
+            {t('The daily limit includes fees you pay.')}
+          </p>
+        ) : null}
+      </fieldset>
 
       <div className='space-y-2'>
         <Label htmlFor={`${ids}-amount`}>{t('Transfer amount')}</Label>

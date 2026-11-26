@@ -29,6 +29,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import type { WalletTransferRecord } from '@/features/wallet/types'
 import { api } from '@/lib/api'
+import { formatQuota } from '@/lib/format'
 
 import { TransferHistory } from '../components/transfer-history'
 
@@ -55,8 +56,11 @@ const sent: WalletTransferRecord = {
 }
 
 // Serves the given records in the backend's paged shape (common.PageInfo).
-function renderHistory(props: { currentUserId: number; adminView?: boolean }) {
-  const page = { page: 1, page_size: 20, total: 1, items: [sent] }
+function renderHistory(
+  props: { currentUserId: number; adminView?: boolean },
+  record = sent
+) {
+  const page = { page: 1, page_size: 20, total: 1, items: [record] }
   vi.spyOn(api, 'get').mockResolvedValue({
     data: {
       success: true,
@@ -89,7 +93,39 @@ it('lists the sender’s own transfer with recipient, amount, fee and credited a
   expect(within(record).getByText('Transfer amount')).toBeVisible()
   expect(within(record).getByText(/^Transfer fee/)).toBeVisible()
   expect(within(record).getByText('Amount received')).toBeVisible()
+  expect(within(record).getByText('Fee payer').parentElement).toHaveTextContent(
+    'Recipient'
+  )
 })
+
+it.each([1, 2, 99])(
+  'shows sender-paid fees and total debit in history for user %s',
+  async (currentUserId) => {
+    renderHistory(
+      { currentUserId, adminView: currentUserId === 99 },
+      {
+        ...sent,
+        fee_payer: 'sender',
+        transfer_amount: 1_000_000,
+        amount: 1_020_000,
+        received: 1_000_000,
+      }
+    )
+    const record = within(await screen.findByRole('article'))
+    expect(record.getByText('Fee payer').parentElement).toHaveTextContent(
+      'Sender'
+    )
+    expect(record.getByText('Total debited').parentElement).toHaveTextContent(
+      formatQuota(1_020_000)
+    )
+    expect(record.getByText('Transfer amount').parentElement).toHaveTextContent(
+      formatQuota(1_000_000)
+    )
+    expect(record.getByText('Amount received').parentElement).toHaveTextContent(
+      formatQuota(1_000_000)
+    )
+  }
+)
 
 it('names each party by username only, never by display name', async () => {
   renderHistory({ currentUserId: 2 })

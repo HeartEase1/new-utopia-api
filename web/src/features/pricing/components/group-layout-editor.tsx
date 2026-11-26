@@ -58,16 +58,7 @@ export default function GroupLayoutEditor(props: { onClose: () => void }) {
         options.data.find((o) => o.key === PRICING_GROUP_LAYOUT_KEY)?.value ??
           ''
       )
-      return completePricingGroupLayout(
-        saved,
-        [
-          ...new Set([
-            ...(groups.data ?? []),
-            ...saved.flatMap((item) => item.groups),
-          ]),
-        ],
-        true
-      )
+      return completePricingGroupLayout(saved, groups.data ?? [], true)
     },
     staleTime: 0,
     gcTime: 0,

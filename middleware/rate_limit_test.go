@@ -96,6 +96,40 @@ func TestRedisUserRateLimiterUsesSharedFixedWindow(t *testing.T) {
 	assert.Equal(t, 23*time.Second, redisServer.TTL(key))
 }
 
+func TestDatabaseBackedReadLimitsAreSharedPerUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	useRateLimitMiniRedis(t)
+	previousCriticalLimitEnabled := common.CriticalRateLimitEnable
+	common.CriticalRateLimitEnable = true
+	t.Cleanup(func() { common.CriticalRateLimitEnable = previousCriticalLimitEnabled })
+
+	router := gin.New()
+	router.GET("/wallet/status", func(c *gin.Context) { c.Set("id", 42) }, WalletTransferReadRateLimit(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/wallet/history", func(c *gin.Context) { c.Set("id", 42) }, WalletTransferReadRateLimit(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/availability", func(c *gin.Context) { c.Set("id", 42) }, ModelAvailabilityRateLimit(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	for i := range 60 {
+		path := "/wallet/status"
+		if i%2 == 1 {
+			path = "/wallet/history"
+		}
+		response := performRateLimitRequest(router, path, "192.0.2.10:12345")
+		assert.Equal(t, http.StatusNoContent, response.Code)
+	}
+	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/wallet/history", "198.51.100.20:12345").Code)
+
+	for range 10 {
+		assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/availability", "192.0.2.10:12345").Code)
+	}
+	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/availability", "198.51.100.20:12345").Code)
+}
+
 func TestRedisEmailVerificationRateLimiterPreservesResponseAndTTL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	redisServer, _ := useRateLimitMiniRedis(t)
