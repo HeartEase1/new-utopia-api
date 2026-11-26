@@ -18,9 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 @custom-variant dark (&:is(.dark *));
 
+/* Only the coin character uses this font; text, numbers and copied values
+ * keep their existing fonts and Unicode content. */
+@font-face {
+  font-family: 'Utopia Coin';
+  src: url('../../public/fonts/utopia-coin.woff2') format('woff2');
+  font-display: swap;
+  unicode-range: U+1FA99;
+}
+
 @theme inline {
   --font-sans: var(--font-ui-sans);
-  --font-public-sans: 'Public Sans Variable', 'Public Sans', sans-serif;
+  --font-public-sans:
+    'Utopia Coin', 'Public Sans Variable', 'Public Sans', sans-serif;
+  --font-mono:
+    'Utopia Coin', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
   /* Editorial serif token — the body face used by the `serif` font axis
    * and by presets that opt in (currently Anthropic). Lora carries only
    * Latin glyphs, so the stack walks through CJK serifs (Noto / Source Han
@@ -28,18 +41,20 @@ For commercial licensing, please contact support@quantumnous.com
    * explicit CJK fonts the browser's generic-serif pick on Windows is
    * non-deterministic at small sizes and often appears sans-like. */
   --font-serif:
-    'Lora Variable', 'Lora', 'Source Serif Pro', 'Source Serif 4',
-    'Noto Serif SC', 'Noto Serif TC', 'Noto Serif JP', 'Noto Serif KR',
-    'Source Han Serif SC', 'Source Han Serif TC', 'Source Han Serif',
-    'Songti SC', 'STSong', 'STSongti-SC-Regular', 'PingFang SC', 'SimSun',
-    'NSimSun', '宋体', 'FangSong', '仿宋', 'KaiTi', '楷体', Georgia,
-    'Times New Roman', Cambria, 'Liberation Serif', serif;
+    'Utopia Coin', 'Lora Variable', 'Lora', 'Source Serif Pro',
+    'Source Serif 4', 'Noto Serif SC', 'Noto Serif TC', 'Noto Serif JP',
+    'Noto Serif KR', 'Source Han Serif SC', 'Source Han Serif TC',
+    'Source Han Serif', 'Songti SC', 'STSong', 'STSongti-SC-Regular',
+    'PingFang SC', 'SimSun', 'NSimSun', '宋体', 'FangSong', '仿宋', 'KaiTi',
+    '楷体', Georgia, 'Times New Roman', Cambria, 'Liberation Serif', serif;
   --font-inter:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    'Utopia Coin', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
   --font-manrope:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    'Utopia Coin', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -101,7 +116,7 @@ For commercial licensing, please contact support@quantumnous.com
   --app-rev: '2k6e8r7p';
   /* Auto starts with the browser font, including before JS applies the
    * saved preference. Explicit Sans selects Public Sans in theme-presets.css. */
-  --font-ui-sans: sans-serif;
+  --font-ui-sans: 'Utopia Coin', sans-serif;
   --font-body: var(--font-ui-sans);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

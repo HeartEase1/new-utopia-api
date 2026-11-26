@@ -21,6 +21,7 @@ import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -224,6 +225,31 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                   <FormDescription>
                     {t('Choose how quota values are shown to users')}
                   </FormDescription>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      form.setValue(
+                        'general_setting.custom_currency_symbol',
+                        '🪙',
+                        {
+                          shouldDirty: true,
+                        }
+                      )
+                      form.setValue(
+                        'general_setting.quota_display_type',
+                        'CUSTOM',
+                        {
+                          shouldDirty: true,
+                        }
+                      )
+                    }}
+                  >
+                    <img src='/utopia-coin.svg' alt='' className='size-5' />
+                    {t('Use Utopia coins')}
+                  </Button>
                   <FormMessage />
                 </FormItem>
               )}
@@ -238,9 +264,7 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                     <FormLabel>
                       {displayType === 'CNY'
                         ? t('CNY per USD')
-                        : displayType === 'USD'
-                          ? t('USD Exchange Rate')
-                          : t('USD Exchange Rate')}
+                        : t('USD Exchange Rate')}
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -281,7 +305,11 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                         />
                       </FormControl>
                       <FormDescription>
-                        {t('Prefix used when displaying prices')}
+                        {field.value === '🪙'
+                          ? t(
+                              'Utopia coins use a custom gold icon. Set units per USD below.'
+                            )
+                          : t('Prefix used when displaying prices')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

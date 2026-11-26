@@ -99,6 +99,62 @@ func TestWalletTransferMovesBalanceOnceAndRecordsRoundedFee(t *testing.T) {
 	assert.EqualValues(t, 1, transferCount)
 }
 
+func TestWalletTransferFeeExemptionRequiresCurrentRootSender(t *testing.T) {
+	for _, role := range []int{common.RoleCommonUser, common.RoleAdminUser, common.RoleRootUser} {
+		t.Run(strconv.Itoa(role), func(t *testing.T) {
+			prepareWalletTransferTest(t)
+			sender, identity, login, payment := createWalletTransferTestAccount(t, "fee-sender", 100, true)
+			recipient, _, _, _ := createWalletTransferTestAccount(t, "fee-recipient", 0, false)
+			require.NoError(t, DB.Model(&User{}).Where("id = ?", sender.Id).Update("role", role).Error)
+			// Receiving into a root account must not exempt a non-root sender.
+			require.NoError(t, DB.Model(&User{}).Where("id = ?", recipient.Id).Update("role", common.RoleRootUser).Error)
+			settings := operation_setting.GetPaymentSetting()
+			oldFee := settings.WalletTransferFeePercent
+			settings.WalletTransferFeePercent = 2
+			t.Cleanup(func() { settings.WalletTransferFeePercent = oldFee })
+			wantFee, wantRate := int64(1), "2.00"
+			if role == common.RoleRootUser {
+				wantFee, wantRate = 0, "0.00"
+			}
+			status, err := GetWalletTransferStatus(sender.Id, 1000, "USD", "$")
+			require.NoError(t, err)
+			assert.Equal(t, wantRate, status.FeePercent)
+			quote := createWalletTransferTestQuote(t, identity, recipient.Id, 50, 2)
+			assert.Equal(t, wantFee, quote.Quote.Fee)
+			assert.Equal(t, wantRate, quote.Quote.FeePercent)
+			submit := WalletTransferSubmit{QuoteToken: quote.QuoteToken, LoginPassword: login, PaymentPassword: payment}
+			transfer, err := ConfirmWalletTransfer(identity, submit)
+			require.NoError(t, err)
+			assert.Equal(t, wantFee, transfer.Fee)
+			assert.Equal(t, wantRate, transfer.FeePercent)
+			assert.Equal(t, int64(50)-wantFee, transfer.Received)
+			replayed, err := ConfirmWalletTransfer(identity, submit)
+			require.NoError(t, err)
+			assert.Equal(t, transfer.Id, replayed.Id)
+			assert.Equal(t, 50, getUserQuotaFromDB(t, sender.Id))
+			assert.Equal(t, 50-int(wantFee), getUserQuotaFromDB(t, recipient.Id))
+		})
+	}
+	for _, role := range []int{common.RoleCommonUser, common.RoleRootUser} {
+		t.Run("role-change-"+strconv.Itoa(role), func(t *testing.T) {
+			prepareWalletTransferTest(t)
+			sender, identity, login, payment := createWalletTransferTestAccount(t, "role-sender", 100, true)
+			recipient, _, _, _ := createWalletTransferTestAccount(t, "role-recipient", 0, false)
+			require.NoError(t, DB.Model(&User{}).Where("id = ?", sender.Id).Update("role", role).Error)
+			quote := createWalletTransferTestQuote(t, identity, recipient.Id, 50, 2)
+			nextRole := common.RoleRootUser
+			if role == common.RoleRootUser {
+				nextRole = common.RoleAdminUser
+			}
+			require.NoError(t, DB.Model(&User{}).Where("id = ?", sender.Id).Update("role", nextRole).Error)
+			_, err := ConfirmWalletTransfer(identity, WalletTransferSubmit{QuoteToken: quote.QuoteToken, LoginPassword: login, PaymentPassword: payment})
+			assert.ErrorIs(t, err, ErrWalletTransferQuoteInvalid)
+			assert.Equal(t, 100, getUserQuotaFromDB(t, sender.Id))
+			assert.Zero(t, getUserQuotaFromDB(t, recipient.Id))
+		})
+	}
+}
+
 func TestWalletTransferRequiresFreshTOTPAndCapsFailedSubmissions(t *testing.T) {
 	prepareWalletTransferTest(t)
 	sender, identity, loginPassword, paymentPassword := createWalletTransferTestAccount(t, "totp-sender", 100, false)

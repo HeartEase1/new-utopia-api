@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title">
+  <title id="title">Utopia star coin</title>
+  <!-- Raised rim and a recessed field, struck from the same gold. -->
+  <path fill="#72501C" d="M50 2a48 48 0 1 1 0 96 48 48 0 1 1 0-96Z"/>
+  <path fill="#EDC76C" d="M50 3a46 46 0 1 1 0 92 46 46 0 1 1 0-92Z"/>
+  <path fill="#FFF6D6" d="M5 53A45 45 0 0 1 81 16A47 47 0 0 0 5 53Z"/>
+  <path fill="#674318" d="M50 8a41 41 0 1 1 0 82 41 41 0 1 1 0-82Z"/>
+  <path fill="#946A27" d="M51 10a40 40 0 1 1 0 80 40 40 0 1 1 0-80Z"/>
+  <path fill="#9B722C" d="M14 65Q23 30 64 12A40 40 0 0 1 87 33Q47 43 29 83Q19 77 14 65Z"/>
+  <path fill="#FFE3A0" d="M95 57A45 45 0 0 1 62 92Q86 84 95 57Z"/>
+  <!-- Two olive sprigs follow the lower arc. -->
+  <path fill="#D7AA50" d="M47 82Q26 78 19 54Q25 73 45 80Q48 81 47 82Z M53 82Q74 78 81 54Q75 73 55 80Q52 81 53 82Z"/>
+  <path fill="#DAB263" d="M23 64Q14 61 17 48Q25 54 23 64Z M29 72Q19 73 16 63Q27 64 29 72Z M37 78Q26 83 21 74Q30 71 37 78Z M44 81Q36 87 28 83Q35 77 44 81Z M28 71Q23 65 27 57Q33 64 28 71Z M36 77Q29 72 33 64Q39 68 36 77Z M77 64Q86 61 83 48Q75 54 77 64Z M71 72Q81 73 84 63Q73 64 71 72Z M63 78Q74 83 79 74Q70 71 63 78Z M56 81Q64 87 72 83Q65 77 56 81Z M72 71Q77 65 73 57Q67 64 72 71Z M64 77Q71 72 67 64Q61 68 64 77Z"/>
+  <path fill="#FFE6A0" d="M17 48Q14 61 23 64Z M16 63Q19 73 29 72Z M21 74Q26 83 37 78Z M28 83Q36 87 44 81Z M27 57Q23 65 28 71Z M33 64Q29 72 36 77Z M83 48Q75 54 77 64Z M84 63Q73 64 71 72Z M79 74Q70 71 63 78Z M72 83Q65 77 56 81Z M73 57Q67 64 72 71Z M67 64Q61 68 64 77Z"/>
+  <!-- The high ridge of the star catches light from the upper left. -->
+  <path fill="#664415" d="M52 15 61 35 84 45 61 55 52 77 41 55 18 45 40 35Z"/>
+  <path fill="#F8DC91" d="M50 12 59 34 81 43 59 52 50 74 41 52 19 43 41 34Z"/>
+  <path fill="#FFF6CF" d="M50 12V43L41 34Z M19 43H50L41 52Z"/>
+  <path fill="#D3A247" d="M50 12 59 34 50 43Z M50 43 59 52 50 74Z"/>
+  <path fill="#BC8B36" d="M81 43 59 52 50 43Z"/>
+  <path fill="#FFFADE" d="M50 13 51 40 60 43 51 44 50 57 49 44 37 43 49 42Z"/>
+</svg>

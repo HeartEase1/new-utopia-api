@@ -205,6 +205,7 @@ type walletTransferQuoteState struct {
 	Fee                  int64  `json:"fee"`
 	Received             int64  `json:"received"`
 	FeePercent           string `json:"fee_percent"`
+	FeeExempt            bool   `json:"fee_exempt"`
 	DateKey              string `json:"date_key"`
 	DailyLimitQuota      int64  `json:"daily_limit_quota"`
 	DailyLimitAmount     int    `json:"daily_limit_amount"`
@@ -275,18 +276,14 @@ func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, am
 	if amount < dailyLimitQuota/WalletTransferDailyLimit {
 		return nil, ErrWalletTransferBelowMinimum
 	}
-	fee, feePercentSnapshot, err := walletTransferFee(amount, feePercent)
-	if err != nil {
-		return nil, err
-	}
 	state := walletTransferQuoteState{
-		SenderId: identity.UserID, RecipientId: recipientId, Amount: amount, Fee: fee,
-		Received: amount - fee, FeePercent: feePercentSnapshot, DateKey: walletTransferDateKey(time.Now()),
+		SenderId: identity.UserID, RecipientId: recipientId, Amount: amount,
+		DateKey:         walletTransferDateKey(time.Now()),
 		DailyLimitQuota: dailyLimitQuota, DailyLimitAmount: dailyLimitAmount,
 		DisplayType: displayType, DisplaySymbol: displaySymbol,
 	}
 	var result WalletTransferQuoteResult
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		userIds := []int{identity.UserID, recipientId}
 		sort.Ints(userIds)
 		for _, userId := range userIds {
@@ -309,9 +306,19 @@ func CreateWalletTransferQuote(identity AuthSessionIdentity, recipientId int, am
 			return ErrWalletTransferRecipientInvalid
 		}
 		var sender User
-		if err := tx.Select("id").First(&sender, identity.UserID).Error; err != nil {
+		if err := tx.Select("id", "role").First(&sender, identity.UserID).Error; err != nil {
 			return err
 		}
+		state.FeeExempt = sender.Role == common.RoleRootUser
+		effectiveFeePercent := feePercent
+		if state.FeeExempt {
+			effectiveFeePercent = 0
+		}
+		fee, feePercentSnapshot, err := walletTransferFee(amount, effectiveFeePercent)
+		if err != nil {
+			return err
+		}
+		state.Fee, state.FeePercent, state.Received = fee, feePercentSnapshot, amount-fee
 		state.RecipientUsername = recipient.Username
 		state.RecipientDisplayName = recipient.DisplayName
 		config := WalletTransferDailyConfig{
@@ -382,6 +389,10 @@ func GetWalletTransferStatus(userId int, dailyLimitQuota int64, displayType, dis
 	}
 	status.EmailExempt = walletPasswordEmailExempt(&user)
 	status.LimitsExempt = user.Role == common.RoleRootUser
+	status.FeePercent = strconv.FormatFloat(operation_setting.GetPaymentSetting().WalletTransferFeePercent, 'f', 2, 64)
+	if user.Role == common.RoleRootUser {
+		status.FeePercent = "0.00"
+	}
 	status.HasLoginPassword = user.Password != ""
 	status.Email = common.MaskEmail(NormalizeEmail(user.Email))
 	status.HasEmail = user.Email != ""
@@ -803,6 +814,11 @@ func ConfirmWalletTransfer(identity AuthSessionIdentity, input WalletTransferSub
 		var sender User
 		if err := tx.Select("id", "username", "display_name", "password", "status", "quota", "role").First(&sender, identity.UserID).Error; err != nil {
 			return err
+		}
+		// Fees are reviewed before confirmation. A changed exemption requires
+		// a fresh quote rather than silently changing the amount received.
+		if quote.FeeExempt != (sender.Role == common.RoleRootUser) {
+			return ErrWalletTransferQuoteInvalid
 		}
 		var recipient User
 		if err := tx.Select("id", "username", "display_name", "status", "quota").First(&recipient, quote.RecipientId).Error; err != nil || recipient.Status != common.UserStatusEnabled || sender.Id == recipient.Id {

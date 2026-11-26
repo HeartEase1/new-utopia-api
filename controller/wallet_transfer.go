@@ -59,7 +59,6 @@ func GetWalletTransferStatus(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	status.FeePercent = strconv.FormatFloat(operation_setting.GetPaymentSetting().WalletTransferFeePercent, 'f', 2, 64)
 	common.ApiSuccess(c, status)
 }
 
